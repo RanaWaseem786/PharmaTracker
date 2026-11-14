@@ -2202,7 +2202,7 @@ img,canvas,svg{max-width:100%}
         <h1>Sales intelligence for teams who <span class="grad">refuse to guess.</span></h1>
         <p>PharmaTracker turns scattered sales sheets into a single source of truth — real-time dashboards, product-level analytics, and role-based control, built specifically for pharma distribution businesses.</p>
         <div class="mkt-hero-actions">
-            <div class="mkt-btn mkt-btn-gold mkt-btn-lg" onclick="pharmaTrackerStartTrial()"><i class="fas fa-rocket"></i> Start 7-Day Free Trial</div>
+            <div class="mkt-btn mkt-btn-gold mkt-btn-lg" onclick="pharmaTrackerStartTrial()"><i class="fas fa-rocket"></i> Start free trial</div>
             <div class="mkt-btn mkt-btn-ghost mkt-btn-lg" onclick="mktScrollTo('features')"><i class="fas fa-play"></i> See features</div>
         </div>
         <div class="mkt-trust">
@@ -2927,7 +2927,7 @@ img,canvas,svg{max-width:100%}
             
             <div class="mkt-final-cta-buttons">
                 <div class="mkt-btn mkt-btn-gold mkt-btn-lg" onclick="pharmaTrackerStartTrial()">
-                    <i class="fas fa-rocket"></i> Start 7-Day Free Trial
+                    <i class="fas fa-rocket"></i> Start Free Trial (7 days)
                 </div>
                 <div class="mkt-btn mkt-btn-ghost mkt-btn-lg" onclick="mktShowPage('pricing')">
                     <i class="fas fa-tag"></i> View Pricing
@@ -3163,12 +3163,8 @@ function changeSiteLanguage(language){
                     <input class="auth-input" type="password" id="signup-confirm" placeholder="Repeat password">
                 </div>
             </div>
-            <div class="pt-trial-signup-note">
-                <strong><i class="fas fa-gift"></i> Start your 7-day free trial</strong>
-                <span>Full access for 7 days. No payment method, transaction ID or payment proof is required.</span>
-            </div>
-            <!-- Paid-signup compatibility retained in the markup; hidden during free-trial registration. -->
-            <div class="payment-box signup-payment-legacy" aria-hidden="true">
+            <!-- Legacy payment step retained for paid-signup compatibility; hidden because new accounts start on the free trial. -->
+            <div class="payment-box signup-payment-legacy">
                 <div class="payment-box-title"><i class="fas fa-gem"></i> <span id="signup-plan-name">Basic</span> <span class="amt" id="pay-amt-display">Rs. 1,000 / month</span></div>
                 <div class="plan-select-row" id="signup-plan-row"></div>
                 <div class="pay-method-row pay-method-row-3">
@@ -3194,7 +3190,7 @@ function changeSiteLanguage(language){
             </div>
 
             <button class="auth-btn" id="signup-btn" onclick="doSignup()">
-                <i class="fas fa-rocket"></i> Start 7-Day Free Trial
+                <i class="fas fa-user-plus"></i> Create Account
             </button>
 
             <div class="auth-terms">
@@ -11887,24 +11883,16 @@ async function doResetPassword() {
 
 function showRenewForm(user) {
     renewTargetEmail = user.email.toLowerCase();
-    const accountPlan = (user.subscription && user.subscription.currentPlan) || user.currentPlan || user.planId;
-    const accountExpiry = accountPlan === 'trial' && user.trialEndsAt
-        ? user.trialEndsAt
-        : ((user.subscription && user.subscription.expiryDate) || user.expiryDate || user.validUntil);
-    const expiryDateObj = accountExpiry && typeof accountExpiry.toDate === 'function' ? accountExpiry.toDate() : new Date(accountExpiry);
-    const expDate = accountExpiry && !Number.isNaN(expiryDateObj.getTime()) ? expiryDateObj.toLocaleDateString('en-GB') : 'soon';
-    const daysLeft = accountExpiry && !Number.isNaN(expiryDateObj.getTime()) ? Math.ceil((expiryDateObj - new Date()) / (24*60*60*1000)) : 0;
-    const isTrialAccount = ((user.subscription && user.subscription.currentPlan) || user.currentPlan || user.planId) === 'trial';
+    const expDate = user.validUntil ? new Date(user.validUntil).toLocaleDateString('en-GB') : 'soon';
+    const daysLeft = user.validUntil ? Math.ceil((new Date(user.validUntil) - new Date()) / (24*60*60*1000)) : 0;
     document.getElementById('renew-notice').textContent = daysLeft > 0
         ? `Your subscription expires on ${expDate}. Please renew before it ends.`
-        : (isTrialAccount
-            ? `Your 7-day free trial ended on ${expDate}. Choose a monthly plan below to activate your subscription. Your account and saved data are retained.`
-            : `Your subscription expired on ${expDate}. Please choose a monthly plan to renew.`);
+        : `Your subscription expired on ${expDate}. Please make a payment to renew.`;
     document.getElementById('auth-overlay').classList.remove('hidden');
     document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
     document.getElementById('form-renew').classList.add('active');
-    if (user.planId) selectedPlan.renew = user.planId === 'trial' ? 'professional' : user.planId;
+    if (user.planId) selectedPlan.renew = user.planId;
     renderPlanChips('renew');
     selectPayMethod('jazzcash', 'renew');
 }
@@ -12411,19 +12399,6 @@ function backToMarketing(){
         return;
     }
 
-    function ptAccountExpiry(profile) {
-        if (!profile) return null;
-        const sub = profile.subscription || {};
-        const plan = sub.currentPlan || profile.currentPlan || profile.planId;
-        if (plan === 'trial' && profile.trialEndsAt) return profile.trialEndsAt;
-        return sub.expiryDate || profile.expiryDate || profile.validUntil || null;
-    }
-    function ptIsAccountExpired(profile) {
-        const expiry = ptAccountExpiry(profile);
-        const parsed = expiry ? (typeof expiry.toDate === 'function' ? expiry.toDate().getTime() : new Date(expiry).getTime()) : NaN;
-        return Number.isFinite(parsed) && parsed <= Date.now();
-    }
-
     async function firebaseProfile(email) {
         const normalizedEmail = String(email || '').trim().toLowerCase();
         try {
@@ -12498,11 +12473,7 @@ function backToMarketing(){
             if (Date.now() - (raw.ts || 0) > PROFILE_CACHE_TTL) return null;
             const p = raw.profile;
             if (!p || p.status !== 'active') return null;
-            const pPlan = (p.subscription && p.subscription.currentPlan) || p.currentPlan || p.planId;
-            const pExpiry = pPlan === 'trial' && Number.isFinite(Number(p.trialExpiryMs))
-                ? Number(p.trialExpiryMs)
-                : new Date((p.subscription && p.subscription.expiryDate) || p.expiryDate || p.validUntil || 0).getTime();
-            if (pExpiry && pExpiry <= Date.now()) return null;
+            if (p.validUntil && new Date(p.validUntil) < new Date()) return null;
             return p;
         } catch (e) { return null; }
     }
@@ -12529,7 +12500,6 @@ function backToMarketing(){
                     return;
                 }
                 try {
-                    if (window.__ptSignupInProgress) { finish(); return; }
                     const emailKey = String(authUser.email || '').trim().toLowerCase();
                     const cachedProfile = readProfileCache(emailKey);
                     if (cachedProfile) {
@@ -12541,11 +12511,8 @@ function backToMarketing(){
                         firebaseProfile(emailKey).then(function (fresh) {
                             if (!fresh) { try { firebaseAuth.signOut(); } catch (e2) {} return; }
                             writeProfileCache(emailKey, fresh);
-                            const freshPlan = (fresh.subscription && fresh.subscription.currentPlan) || fresh.currentPlan || fresh.planId;
-                            const freshExpiry = freshPlan === 'trial' && fresh.trialEndsAt
-                                ? (typeof fresh.trialEndsAt.toDate === 'function' ? fresh.trialEndsAt.toDate().getTime() : Number(fresh.trialExpiryMs))
-                                : new Date((fresh.subscription && fresh.subscription.expiryDate) || fresh.expiryDate || fresh.validUntil || 0).getTime();
-                            const stillActive = fresh.status === 'active' && (!freshExpiry || freshExpiry > Date.now());
+                            const stillActive = fresh.status === 'active' &&
+                                (!fresh.validUntil || new Date(fresh.validUntil) >= new Date());
                             if (stillActive) { currentUser = fresh; return; }
                             currentUser = fresh;
                             if (fresh.status === 'pending') {
@@ -12628,7 +12595,7 @@ function backToMarketing(){
                 await firebaseAuth.signOut(); return;
             }
             if (profile.status !== 'active') { errEl.textContent = 'This account is not active.'; errEl.classList.add('show'); await firebaseAuth.signOut(); return; }
-            if (ptIsAccountExpired(profile)) { showRenewForm(profile); return; }
+            if (profile.validUntil && new Date(profile.validUntil) < new Date()) { showRenewForm(profile); return; }
             document.getElementById('login-email').classList.remove('error');
             document.getElementById('login-password').classList.remove('error');
             writeProfileCache(email, profile);
@@ -12649,105 +12616,43 @@ function backToMarketing(){
         const company = document.getElementById('signup-company').value.trim();
         const pw = document.getElementById('signup-password').value;
         const confirm = document.getElementById('signup-confirm').value;
+        const txnId = document.getElementById('signup-txnid').value.trim();
         const roleEl = document.querySelector('.role-option.selected');
         let role = roleEl ? roleEl.dataset.role : 'analyst';
-        if (role === 'admin') role = 'analyst';
+        if (role === 'admin') role = 'analyst'; /* public signups can never create an admin */
         const errEl = document.getElementById('signup-error');
         const okEl = document.getElementById('signup-success');
-        const btn = document.getElementById('signup-btn');
         errEl.classList.remove('show'); okEl.classList.remove('show');
-
         if (!fname) { errEl.textContent = 'First name is required.'; errEl.classList.add('show'); return; }
-        if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { errEl.textContent = 'Please enter a valid email address.'; errEl.classList.add('show'); return; }
-        if (!company) { errEl.textContent = 'Distributor / company name is required.'; errEl.classList.add('show'); return; }
+        if (!email || !/^[^@]+@[^@]+\.[^@]+$/.test(email)) { errEl.textContent = 'Please enter a valid email address.'; errEl.classList.add('show'); return; }
+        if (!company) { errEl.textContent = 'Company name is required.'; errEl.classList.add('show'); return; }
         if (pw.length < 6) { errEl.textContent = 'Password must be at least 6 characters.'; errEl.classList.add('show'); return; }
         if (pw !== confirm) { errEl.textContent = 'Passwords do not match.'; errEl.classList.add('show'); return; }
-
-        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating your trial…'; }
-        let createdCredential = null;
-        window.__ptSignupInProgress = true;
+        if (!txnId) { errEl.textContent = 'Payment Transaction ID is required.'; errEl.classList.add('show'); return; }
         try {
-            if (!db) throw new Error('Cloud database is not available. Please refresh and try again.');
-            // Firebase Auth enforces one account per email. Existing emails cannot restart a trial.
-            createdCredential = await firebaseAuth.createUserWithEmailAndPassword(email, pw);
-            const started = new Date();
-            const expires = new Date(started.getTime() + 7 * 24 * 60 * 60 * 1000);
-            const startIso = started.toISOString();
-            const expiryIso = expires.toISOString();
+            // Do not read Firestore before Firebase Auth is created. With secure
+            // self-read rules, an anonymous signup cannot read users/{email}.
+            // Firebase Auth itself is the authoritative duplicate-email check.
+            const cred = await firebaseAuth.createUserWithEmailAndPassword(email, pw);
+            const signupPlan = ensureSelectedPlan('signup');
             const newUser = {
-                id: 'u_' + createdCredential.user.uid,
-                firebaseUid: createdCredential.user.uid,
+                id: 'u_' + Date.now(), firebaseUid: cred.user.uid,
                 fname, lname, email, company, role,
-                status: 'active',
-                isRenewal: false,
-                planId: 'trial',
-                currentPlan: 'trial',
-                subscriptionStatus: 'active',
-                paymentStatus: 'trial',
-                trialStartDate: startIso,
-                trialStartedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                trialEndsAt: firebase.firestore.Timestamp.fromDate(expires),
-                trialStartMs: started.getTime(),
-                trialExpiryMs: expires.getTime(),
-                subscriptionStartDate: startIso,
-                expiryDate: expiryIso,
-                validUntil: expiryIso,
-                createdAt: startIso,
-                hasSeenSample: false,
-                subscription: {
-                    userId: createdCredential.user.uid,
-                    name: [fname, lname].filter(Boolean).join(' '),
-                    email, currentPlan: 'trial',
-                    subscriptionStatus: 'active',
-                    paymentStatus: 'trial',
-                    trialStartDate: startIso,
-                    trialStartedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    trialEndsAt: firebase.firestore.Timestamp.fromDate(expires),
-                    trialStartMs: started.getTime(),
-                    trialExpiryMs: expires.getTime(),
-                    subscriptionStartDate: startIso,
-                    expiryDate: expiryIso,
-                    history: [{
-                        id: 'sub_trial_' + createdCredential.user.uid,
-                        type: 'trial_started',
-                        planId: 'trial',
-                        timestamp: startIso,
-                        expiresAt: expiryIso
-                    }]
-                }
+                status: 'pending', isRenewal: false,
+                paymentMethod: selectedPay.signup, transactionId: txnId,
+                planId: signupPlan ? signupPlan.id : null,
+                pendingSince: new Date().toISOString(), createdAt: new Date().toISOString(), hasSeenSample: false
             };
-            // Firestore Rules must permit the authenticated owner to create this
-            // constrained active-trial profile. Cloud writes are mandatory here.
             await db.collection('users').doc(email).set(newUser);
-            currentUser = newUser;
-            writeProfileCache(email, newUser);
-            okEl.textContent = 'Your 7-day free trial is active. Opening your dashboard…';
-            okEl.classList.add('show');
-            document.getElementById('signup-password').value = '';
-            document.getElementById('signup-confirm').value = '';
-            loginSuccess(newUser, true);
-            if (typeof window.renderPharmaTrackerSubscriptionBox === 'function') window.renderPharmaTrackerSubscriptionBox();
-            if (typeof window.updateCountdowns === 'function') window.updateCountdowns();
-            showToast('Welcome! Your 7-day free trial has started.', 'success');
+            await firebaseAuth.signOut();
+            sendAdminNotification(newUser, false);
+            okEl.textContent = '✅ Registration submitted! Waiting for approval…'; okEl.classList.add('show');
+            document.getElementById('pending-title').textContent = 'Registration Submitted!';
+            document.getElementById('pending-text').textContent = 'Your registration request has been sent to the admin. Your account will be activated after the payment is verified.';
+            setTimeout(() => { document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active')); document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active')); document.getElementById('form-pending').classList.add('active'); }, 500);
         } catch (e) {
-            console.error('Free-trial registration failed:', e);
-            if (createdCredential && createdCredential.user) {
-                try { await createdCredential.user.delete(); }
-                catch (rollbackError) {
-                    console.warn('Could not roll back incomplete trial account:', rollbackError);
-                    try { await firebaseAuth.signOut(); } catch (_) {}
-                }
-            }
-            errEl.textContent = authErrorMessage(e);
-            if (e && e.code === 'auth/email-already-in-use') {
-                errEl.textContent = 'An account with this email already exists. Please sign in instead. A second free trial cannot be created for the same email.';
-            } else if (e && e.code === 'permission-denied') {
-                errEl.textContent = 'Your account could not be activated because Firestore Rules do not yet allow secure free-trial profile creation. Please contact the administrator.';
-            }
-            errEl.classList.add('show');
-        } finally {
-            window.__ptSignupInProgress = false;
-            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-rocket"></i> Start 7-Day Free Trial'; }
+            console.error(e);
+            errEl.textContent = authErrorMessage(e); errEl.classList.add('show');
         }
     };
 
@@ -16391,11 +16296,7 @@ window.PT_SAAS = PT_SAAS; // used by getSaaSPaymentPlans() outside this module
 
 function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function nowIso(){return new Date().toISOString();}
-function dateObj(v){
-  const raw = v && typeof v.toDate === 'function' ? v.toDate() : v;
-  const d = new Date(raw);
-  return Number.isNaN(d.getTime())?null:d;
-}
+function dateObj(v){const d=new Date(v);return Number.isNaN(d.getTime())?null:d;}
 function daysLeft(v){
   const d=dateObj(v); if(!d) return 0;
   return Math.max(0,Math.ceil((d.getTime()-Date.now())/86400000));
@@ -16416,9 +16317,7 @@ function subscriptionState(user){
   if(!user) return {planId:null,level:0,status:'signed_out',days:0,expiry:null};
   const s=user.subscription||{};
   const planId=normalizedPlanId(user);
-  const expiry=planId==='trial' && user.trialEndsAt
-    ? user.trialEndsAt
-    : (s.expiryDate||user.expiryDate||user.validUntil);
+  const expiry=s.expiryDate||user.expiryDate||user.validUntil;
   const statusRaw=s.subscriptionStatus||user.subscriptionStatus;
   const expired=expiry && dateObj(expiry) && dateObj(expiry).getTime()<=Date.now();
   let status=statusRaw||'active';
@@ -16433,9 +16332,7 @@ function ensureSubscriptionShape(user){
   if(!user) return user;
   const s=user.subscription||{};
   const planId=normalizedPlanId(user);
-  const expiry=planId==='trial' && user.trialEndsAt
-    ? user.trialEndsAt
-    : (s.expiryDate||user.expiryDate||user.validUntil||null);
+  const expiry=s.expiryDate||user.expiryDate||user.validUntil||null;
   const trialStart=s.trialStartDate||user.trialStartDate||null;
   const subStart=s.subscriptionStartDate||user.subscriptionStartDate||null;
   const paymentStatus=s.paymentStatus||user.paymentStatus||(planId==='trial'?'trial':'verified');
@@ -16539,13 +16436,12 @@ window.renderPharmaTrackerSubscriptionBox=function(){
   const st=subscriptionState(currentUser), p=st.planId?planDef(st.planId):null;
   const expired=st.status==='expired';
   const isTrial=st.planId==='trial';
-  const label=expired?'Expired':(isTrial?'7-Day Free Trial':`${p?.name||'Subscription'} Active`);
-  const expiryDateObj=st.expiry?dateObj(st.expiry):null;
-  const dateText=expiryDateObj?expiryDateObj.toLocaleDateString('en-GB'):'—';
+  const label=expired?'Expired':(isTrial?'Active Subscription':`${p?.name||'Subscription'} Active`);
+  const dateText=st.expiry?new Date(st.expiry).toLocaleDateString('en-GB'):'—';
   el.innerHTML=`
     <div class="saas-expiry-banner ${expired?'expired':''}">
       <i class="fas ${expired?'fa-circle-exclamation':'fa-shield-halved'}"></i>
-      <div style="flex:1"><strong>${esc(label)}</strong><div style="color:var(--muted);margin-top:2px">${expired?'Access expired — renew to restore paid features.':`${st.days} day(s) remaining · trial expires ${esc(dateText)}`}</div></div>
+      <div style="flex:1"><strong>${esc(label)}</strong><div style="color:var(--muted);margin-top:2px">${expired?'Access expired — renew to restore paid features.':`${st.days} day(s) remaining · valid until ${esc(dateText)}`}</div></div>
       <button class="btn ${expired?'btn-primary':'btn-ghost'}" onclick="openSaaSUpgrade('${isTrial?'professional':(st.planId||'professional')}')">${expired?'Upgrade / Renew':'Manage'}</button>
     </div>
     <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
@@ -16894,29 +16790,6 @@ function updateCountdowns(){
   if(st.expiry){
     const n=document.getElementById('saas-trial-countdown');
     if(n)n.textContent=st.status==='expired'?'Expired':`${st.days} day${st.days===1?'':'s'} remaining`;
-  }
-  // Notify once per account/day at 3 days and 1 day before expiry.
-  if(st.planId==='trial' && st.status!=='expired' && (st.days===3 || st.days===1)){
-    try{
-      const key='pt_trial_notice_'+String(currentUser.email||'').toLowerCase()+'_'+st.days;
-      if(!localStorage.getItem(key)){
-        localStorage.setItem(key,'1');
-        if(typeof showToast==='function') showToast(st.days===1
-          ? 'Your free trial expires tomorrow. Choose a monthly plan to keep uninterrupted access.'
-          : 'Your free trial expires in 3 days. You can review monthly plans in Settings.', 'warning');
-      }
-    }catch(e){}
-  }
-  // Once the trial/subscription expires, keep the account signed in but gate
-  // the app behind the existing paid-plan activation and verification screen.
-  if(st.status==='expired' && currentUser.role!=='admin'){
-    const gateKey=String(currentUser.email||'').toLowerCase();
-    if(window.__ptExpiredGateShownFor!==gateKey){
-      window.__ptExpiredGateShownFor=gateKey;
-      if(typeof showRenewForm==='function') showRenewForm(currentUser);
-    }
-  }else if(st.status!=='expired'){
-    window.__ptExpiredGateShownFor=null;
   }
   // Only update the small status pill here. Full-page DOM scans are done
   // when the page actually changes, not every minute.
@@ -17281,7 +17154,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
   window.pharmaTrackerStartTrial=function(){
     try{if(typeof selectedPlan!=='undefined')selectedPlan.signup='trial';}catch(e){}
     enterAuth('signup');
-    setTimeout(function(){var f=q('form-signup');if(f){f.scrollTop=0}var pb=q('signup-btn');if(pb){pb.innerHTML='<i class="fas fa-rocket"></i> Start 7-Day Free Trial'}var tx=q('signup-txnid');if(tx)tx.value=''},80);
+    setTimeout(function(){var f=q('form-signup');if(f){f.scrollTop=0}var pb=q('signup-btn');if(pb){pb.innerHTML='<i class="fas fa-user-plus"></i> Create Account'}var tx=q('signup-txnid');if(tx)tx.value=''},80);
   };
   function init(){
     renderStars();loadPublicFeedback();
@@ -18782,10 +18655,4 @@ body.ex-light #page-executive #ex-suite { background:#f1f6f6; color:#142e38; --e
  item.addEventListener('click',open);$('ex-launch').onclick=open;$('ex-close').onclick=function(){suite.style.display='none';showPage('dashboard');};
 })();
 </script>
-<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a53d401abaa9df61',t:'MTc5MzU2MDc1OQ=='};var l=window.parent.location,o;try{o=new URL(l.origin).origin}catch(e){try{o=new URL(new URL(l.href).origin).origin}catch(e){o=''}}var u='/cdn-cgi/challenge-platform/scripts/jsd/main.js?ray=a53d401abaa9df61',a=document.createElement('script');a.src=o?new URL(u,o).href:u;document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script><style id="pt-free-trial-registration-styles">
-.signup-payment-legacy{display:none!important}
-.pt-trial-signup-note{display:flex;flex-direction:column;gap:5px;margin:4px 0 18px;padding:13px 15px;border:1px solid rgba(46,204,113,.35);border-radius:12px;background:rgba(46,204,113,.08);color:var(--text,#e8edf5);font-size:12px;line-height:1.5}
-.pt-trial-signup-note strong{font-size:13px;color:var(--accent2,#42c98a)}
-.pt-trial-signup-note span{color:var(--muted,#9aa7b8)}
-#signup-btn:disabled{opacity:.7;cursor:wait}
-</style></body></html>
+<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a53d401abaa9df61',t:'MTc5MzU2MDc1OQ=='};var l=window.parent.location,o;try{o=new URL(l.origin).origin}catch(e){try{o=new URL(new URL(l.href).origin).origin}catch(e){o=''}}var u='/cdn-cgi/challenge-platform/scripts/jsd/main.js?ray=a53d401abaa9df61',a=document.createElement('script');a.src=o?new URL(u,o).href:u;document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body></html>
