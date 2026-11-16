@@ -11911,14 +11911,17 @@ async function doRenew() {
         ['basic','professional','business'].includes(previousPlanId) &&
         ['basic','professional','business'].includes(plan.id));
     user.status = 'pending';
+    user.paymentStatus = 'pending_verification';
     user.isRenewal = true;
     user.requestType = isPlanUpgrade ? 'plan_upgrade' : 'renewal';
     user.previousPlanId = previousPlanId;
     user.requestedPlanId = plan ? plan.id : previousPlanId;
     user.paymentMethod = selectedPay.renew;
     user.transactionId = txnId;
-    /* Keep the requested plan separate from the active entitlement until admin approval. */
-    user.planId = previousPlanId || (plan ? plan.id : null);
+    /* Keep the active plan untouched until admin approval. In particular, do not
+       change planId on a self-service request: the deployed Firestore Rules only
+       permit the owner to update the pending-request fields listed in rule (C). */
+    if (previousPlanId) user.planId = previousPlanId;
     user.pendingSince = new Date().toISOString();
     await saveUser(user);
     sendAdminNotification(user, true);
@@ -12190,7 +12193,7 @@ async function renderApprovals() {
                 <span>·</span>
                 <span>Ref: <b>${u.transactionId || '—'}</b></span>
                 <span>·</span>
-                <span>${(() => { const p = u.planId ? getPlanById(u.planId) : null; const oldP = u.previousPlanId ? getPlanById(u.previousPlanId) : null; const amount = u.paymentMethod === 'card' ? `$${p ? p.priceIntl : 20}` : `Rs. ${p ? p.priceLocal : REGISTRATION_FEE}`; return (u.requestType === 'plan_upgrade' && oldP && p) ? `${oldP.name} → ${p.name} · ${amount}` : `${amount}${p ? ' · ' + p.name : ''}`; })()}</span>
+                <span>${(() => { const requestedId = u.requestedPlanId || u.planId; const p = requestedId ? getPlanById(requestedId) : null; const oldP = u.previousPlanId ? getPlanById(u.previousPlanId) : null; const amount = u.paymentMethod === 'card' ? `$${p ? p.priceIntl : 20}` : `Rs. ${p ? p.priceLocal : REGISTRATION_FEE}`; return (u.requestType === 'plan_upgrade' && oldP && p) ? `${oldP.name} → ${p.name} · ${amount}` : `${amount}${p ? ' · ' + p.name : ''}`; })()}</span>
             </div>
             <div class="approval-actions">
                 <button class="btn btn-primary" style="padding:7px 14px;font-size:12px" onclick="approveUser('${emailAttr}')"><i class="fas fa-check"></i> Approve</button>
@@ -16722,29 +16725,47 @@ document.addEventListener('visibilitychange',function(){
   }
 });
 
-/* ----- Wrap renew submission so a payment request is pending until approval. */
+/* ----- Renewal submission: keep the user-document update within the exact
+   owner-allowed fields in the deployed Firestore Rules. Write the audit event
+   to users/{email}/history/{id}, whose create rule explicitly permits owner
+   submission events. Never rewrite subscription.* from the customer client. */
 if(typeof doRenew==='function'){
   const originalDoRenew=doRenew;
   window.doRenew=async function(){
+    const email=String((typeof renewTargetEmail!=='undefined'&&renewTargetEmail)||currentUser?.email||'').trim().toLowerCase();
+    const submittedTxn=String(document.getElementById('renew-txnid')?.value||'').trim();
     const result=await originalDoRenew();
+    if(!email || !submittedTxn || !db || !db.collection) return result;
     try{
-      const email=(typeof renewTargetEmail!=='undefined'&&renewTargetEmail)||currentUser?.email;
-      const user=email?await getUserByEmail(email):null;
-      if(user){
-        ensureSubscriptionShape(user);
-        user.paymentStatus='pending_verification';
-        user.subscription.paymentStatus='pending_verification';
-        const pid=(typeof selectedPlan!=='undefined'&&selectedPlan.renew)||user.planId;
-        user.planId=pid;
-        user.subscription.currentPlan=pid;
-        await appendHistory(user, user.requestType === 'plan_upgrade' ? 'plan_upgrade_submitted' : 'payment_submitted', pid, {
-          transactionId:user.transactionId||null,
-          previousPlanId:user.previousPlanId||null,
-          requestedPlanId:user.requestedPlanId||pid
-        });
-        await persistSubscription(user);
+      const ref=db.collection('users').doc(email);
+      const snap=await ref.get();
+      if(!snap.exists) throw new Error('Renewal request document was not found in Firestore.');
+      const user=snap.data()||{};
+      /* The original form validates and writes the request. Verify that exact
+         transaction reached Firestore before recording history or claiming success. */
+      if(user.status!=='pending' || String(user.transactionId||'').trim()!==submittedTxn){
+        console.warn('Renewal request was not persisted as pending in Firestore.', {email,status:user.status,transactionId:user.transactionId});
+        const pendingText=document.getElementById('pending-text');
+        if(pendingText) pendingText.textContent='We could not confirm your renewal request in the cloud. Please check your connection and submit again; do not make another payment until you confirm the transaction status with the admin.';
+        showToast('Renewal request was not saved to Firestore. Please try again or contact the admin.','error');
+        return result;
       }
-    }catch(e){console.warn('Could not append renewal history:',e);}
+      const historyRef=ref.collection('history').doc();
+      const event={
+        id:historyRef.id,
+        type:user.requestType==='plan_upgrade'?'plan_upgrade_submitted':'renewal_submitted',
+        planId:user.requestedPlanId||user.planId||null,
+        timestamp:new Date().toISOString(),
+        transactionId:user.transactionId||null,
+        previousPlanId:user.previousPlanId||null,
+        requestedPlanId:user.requestedPlanId||user.planId||null
+      };
+      await historyRef.set(event);
+    }catch(e){
+      /* History is supplementary. Do not mutate or roll back the already
+         submitted request if the optional history write fails. */
+      console.warn('Could not append Firestore renewal history:',e);
+    }
     return result;
   };
 }
