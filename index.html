@@ -13667,8 +13667,331 @@ window.__ptScheduleDataLoad(5000);
    html[data-theme="gradient-card"]:not([data-theme="modern-dark"]) .bi-kpi-card:nth-child(3) { --kpi-color: #34d399 !important; }
    html[data-theme="gradient-card"]:not([data-theme="modern-dark"]) .bi-ring { filter: saturate(1.05) drop-shadow(0 0 8px rgba(167,139,250,.08)); }
    html[data-theme="minimal-professional"]:not([data-theme="modern-dark"]) .bi-kpi-card { --kpi-color: #59616c !important; }
-   html[data-theme="minimal-professional"]:not([data-theme="modern-dark"]) .bi-ring { filter: grayscale(.55); }
+   html[data-theme="minimal-professional"]:not([data-theme="modern-dark"]) .bi-ring { filter: none; }
 
+</style>
+
+<!-- Minimal Professional — isolated premium polish and value-visibility repair.
+     Scoped only to this theme; no report data or business logic is changed. -->
+<style id="minimal-professional-premium-fix">
+html[data-theme="minimal-professional"] {
+    --mp-bg: #f4f6f8;
+    --mp-surface: #ffffff;
+    --mp-surface-soft: #f7f9fb;
+    --mp-border: #e3e8ee;
+    --mp-text: #202b38;
+    --mp-muted: #667487;
+    --mp-accent: #315b78;
+    --mp-teal: #27847a;
+    --mp-gold: #c18a3b;
+    --mp-danger: #b45353;
+    --mp-shadow: 0 5px 18px rgba(25, 42, 62, .055), 0 1px 3px rgba(25, 42, 62, .035);
+    color-scheme: light;
+}
+html[data-theme="minimal-professional"] body {
+    background: var(--mp-bg) !important;
+    color: var(--mp-text) !important;
+    font-family: "DM Sans", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+}
+html[data-theme="minimal-professional"] .sidebar {
+    background: #fff !important;
+    border-right: 1px solid var(--mp-border) !important;
+    box-shadow: 4px 0 18px rgba(25,42,62,.025) !important;
+}
+html[data-theme="minimal-professional"] .topbar {
+    background: rgba(255,255,255,.94) !important;
+    border-bottom: 1px solid var(--mp-border) !important;
+}
+html[data-theme="minimal-professional"] .page,
+html[data-theme="minimal-professional"] .content,
+html[data-theme="minimal-professional"] .page-content {
+    color: var(--mp-text) !important;
+}
+html[data-theme="minimal-professional"] .page-heading h1,
+html[data-theme="minimal-professional"] .page-heading h2,
+html[data-theme="minimal-professional"] .section-title,
+html[data-theme="minimal-professional"] .card-title {
+    background: none !important;
+    color: var(--mp-text) !important;
+    -webkit-text-fill-color: var(--mp-text) !important;
+    text-shadow: none !important;
+}
+html[data-theme="minimal-professional"] .logo-text {
+    background: none !important;
+    color: var(--mp-text) !important;
+    -webkit-text-fill-color: var(--mp-text) !important;
+}
+html[data-theme="minimal-professional"] .page-heading p,
+html[data-theme="minimal-professional"] .card-sub,
+html[data-theme="minimal-professional"] .stat-label,
+html[data-theme="minimal-professional"] .form-hint,
+html[data-theme="minimal-professional"] .help-text {
+    color: var(--mp-muted) !important;
+    -webkit-text-fill-color: currentColor !important;
+}
+
+/* Premium surfaces */
+html[data-theme="minimal-professional"] .stats-grid .stat-card,
+html[data-theme="minimal-professional"] .stat-card,
+html[data-theme="minimal-professional"] .card,
+html[data-theme="minimal-professional"] .filters-bar,
+html[data-theme="minimal-professional"] .bi-card,
+html[data-theme="minimal-professional"] .bi-kpi-card,
+html[data-theme="minimal-professional"] .bi-ring-card,
+html[data-theme="minimal-professional"] .bi-comp-card {
+    background: var(--mp-surface) !important;
+    border: 1px solid var(--mp-border) !important;
+    border-radius: 12px !important;
+    box-shadow: var(--mp-shadow) !important;
+}
+html[data-theme="minimal-professional"] .stats-grid .stat-card:hover,
+html[data-theme="minimal-professional"] .stat-card:hover,
+html[data-theme="minimal-professional"] .card:hover,
+html[data-theme="minimal-professional"] .bi-card:hover,
+html[data-theme="minimal-professional"] .bi-kpi-card:hover {
+    border-color: #c5d2de !important;
+    box-shadow: 0 10px 26px rgba(25,42,62,.085) !important;
+    transform: translateY(-2px);
+}
+html[data-theme="minimal-professional"] .stat-card::before {
+    background: linear-gradient(90deg, var(--mp-accent), var(--mp-teal)) !important;
+    opacity: .9 !important;
+}
+html[data-theme="minimal-professional"] .stat-icon-wrap {
+    background: #edf3f7 !important;
+    color: var(--mp-accent) !important;
+    border: 1px solid #e0eaf0 !important;
+}
+html[data-theme="minimal-professional"] .stat-value,
+html[data-theme="minimal-professional"] .bi-kpi-value,
+html[data-theme="minimal-professional"] .bi-comp-value,
+html[data-theme="minimal-professional"] .bi-rank-val,
+html[data-theme="minimal-professional"] .bi-ring span {
+    color: var(--mp-text) !important;
+    -webkit-text-fill-color: var(--mp-text) !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    font-weight: 800 !important;
+    font-variant-numeric: tabular-nums lining-nums;
+    font-feature-settings: "tnum" 1, "lnum" 1;
+    text-shadow: none !important;
+}
+html[data-theme="minimal-professional"] .stat-value {
+    display: block;
+    max-width: 100%;
+    font-size: clamp(18px, 1.7vw, 26px) !important;
+    line-height: 1.3 !important;
+    letter-spacing: -.035em !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+}
+html[data-theme="minimal-professional"] .stat-label {
+    font-size: 11px !important;
+    font-weight: 650 !important;
+    letter-spacing: .045em;
+    text-transform: uppercase;
+}
+
+/* Repair the BI KPI clipping cause: flex children now shrink and wrap safely,
+   while the decorative corner accent stays behind the actual figures. */
+html[data-theme="minimal-professional"] .bi-kpi-card {
+    align-items: center !important;
+    gap: 12px !important;
+    min-width: 0 !important;
+    overflow: hidden;
+}
+html[data-theme="minimal-professional"] .bi-kpi-card::after {
+    z-index: 0;
+    opacity: .075 !important;
+}
+html[data-theme="minimal-professional"] .bi-kpi-icon,
+html[data-theme="minimal-professional"] .bi-kpi-body {
+    position: relative;
+    z-index: 1;
+}
+html[data-theme="minimal-professional"] .bi-kpi-icon {
+    flex: 0 0 40px;
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    border-radius: 11px;
+    background: #edf3f7 !important;
+    color: var(--mp-accent) !important;
+    box-shadow: none !important;
+}
+html[data-theme="minimal-professional"] .bi-kpi-body {
+    flex: 1 1 0;
+    min-width: 0 !important;
+    max-width: 100%;
+}
+html[data-theme="minimal-professional"] .bi-kpi-value {
+    display: block;
+    max-width: 100%;
+    font-size: clamp(15px, 1.45vw, 22px) !important;
+    line-height: 1.3 !important;
+    letter-spacing: -.035em !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+    word-break: normal;
+}
+html[data-theme="minimal-professional"] .bi-kpi-label,
+html[data-theme="minimal-professional"] .bi-comp-title {
+    color: var(--mp-muted) !important;
+    font-size: 10px !important;
+    font-weight: 750 !important;
+    letter-spacing: .06em !important;
+    text-transform: uppercase;
+}
+html[data-theme="minimal-professional"] .bi-kpi-sub,
+html[data-theme="minimal-professional"] .bi-ring-sub {
+    color: var(--mp-muted) !important;
+}
+html[data-theme="minimal-professional"] .bi-ring {
+    filter: none !important;
+    box-shadow: none !important;
+}
+html[data-theme="minimal-professional"] .bi-ring::before {
+    background: #fff !important;
+}
+
+/* Tables: stable numeric alignment, visible figures and responsive scrolling. */
+html[data-theme="minimal-professional"] .table-wrap,
+html[data-theme="minimal-professional"] .table-container {
+    max-width: 100%;
+    border: 1px solid var(--mp-border) !important;
+    border-radius: 10px;
+    background: #fff !important;
+}
+html[data-theme="minimal-professional"] table {
+    width: 100%;
+    border-collapse: separate !important;
+    border-spacing: 0;
+}
+html[data-theme="minimal-professional"] thead th {
+    background: #f1f5f8 !important;
+    color: #526274 !important;
+    -webkit-text-fill-color: #526274 !important;
+    font-size: 10px !important;
+    font-weight: 800 !important;
+    letter-spacing: .055em !important;
+    text-transform: uppercase;
+    white-space: normal;
+}
+html[data-theme="minimal-professional"] tbody td,
+html[data-theme="minimal-professional"] tbody tr {
+    color: var(--mp-text) !important;
+    -webkit-text-fill-color: var(--mp-text) !important;
+    border-color: var(--mp-border) !important;
+}
+html[data-theme="minimal-professional"] tbody td {
+    font-variant-numeric: tabular-nums;
+    vertical-align: middle;
+}
+html[data-theme="minimal-professional"] tbody tr:nth-child(even) {
+    background: #fafbfd !important;
+}
+html[data-theme="minimal-professional"] tbody tr:hover {
+    background: #f0f5f8 !important;
+}
+
+/* Charts and data labels */
+html[data-theme="minimal-professional"] .chart-wrap,
+html[data-theme="minimal-professional"] .bi-chart-wrap,
+html[data-theme="minimal-professional"] .ex-chart {
+    min-width: 0;
+    max-width: 100%;
+}
+html[data-theme="minimal-professional"] .bi-chart-wrap {
+    overflow: visible;
+}
+html[data-theme="minimal-professional"] canvas {
+    max-width: 100%;
+}
+html[data-theme="minimal-professional"] .bi-region-item,
+html[data-theme="minimal-professional"] .bi-comp-card {
+    background: var(--mp-surface-soft) !important;
+    border-color: var(--mp-border) !important;
+    color: var(--mp-text) !important;
+}
+html[data-theme="minimal-professional"] .bi-region-top,
+html[data-theme="minimal-professional"] .bi-rank-row,
+html[data-theme="minimal-professional"] .bi-comp-title {
+    color: var(--mp-text) !important;
+}
+html[data-theme="minimal-professional"] .bi-region-bar,
+html[data-theme="minimal-professional"] .bi-rank-bar-wrap {
+    background: #e9eef3 !important;
+}
+html[data-theme="minimal-professional"] .bi-region-bar i,
+html[data-theme="minimal-professional"] .bi-rank-bar {
+    background: linear-gradient(90deg, var(--mp-accent), var(--mp-teal)) !important;
+}
+html[data-theme="minimal-professional"] .badge,
+html[data-theme="minimal-professional"] .nav-badge {
+    border-radius: 6px !important;
+    font-weight: 700 !important;
+}
+html[data-theme="minimal-professional"] .btn-primary {
+    background: linear-gradient(135deg, #315b78, #24465f) !important;
+    border-color: #315b78 !important;
+    color: #fff !important;
+    box-shadow: 0 4px 12px rgba(49,91,120,.16) !important;
+}
+html[data-theme="minimal-professional"] .btn-success {
+    background: #287866 !important;
+    border-color: #287866 !important;
+    color: #fff !important;
+}
+html[data-theme="minimal-professional"] .btn-danger {
+    background: #fff5f4 !important;
+    color: #a74444 !important;
+    border-color: #efd3d0 !important;
+}
+html[data-theme="minimal-professional"] input,
+html[data-theme="minimal-professional"] select,
+html[data-theme="minimal-professional"] textarea {
+    background-color: #fff !important;
+    color: var(--mp-text) !important;
+    border-color: var(--mp-border) !important;
+}
+html[data-theme="minimal-professional"] .modal {
+    background: #fff !important;
+    color: var(--mp-text) !important;
+    border-color: var(--mp-border) !important;
+    box-shadow: 0 20px 60px rgba(25,42,62,.16) !important;
+}
+
+@media (max-width: 900px) {
+    html[data-theme="minimal-professional"] .bi-kpi-grid,
+    html[data-theme="minimal-professional"] .bi-ring-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+}
+@media (max-width: 560px) {
+    html[data-theme="minimal-professional"] .bi-kpi-grid,
+    html[data-theme="minimal-professional"] .bi-ring-grid {
+        grid-template-columns: minmax(0, 1fr) !important;
+    }
+    html[data-theme="minimal-professional"] .bi-kpi-card {
+        padding: 13px !important;
+    }
+    html[data-theme="minimal-professional"] .stat-value {
+        font-size: clamp(17px, 5vw, 23px) !important;
+    }
+    html[data-theme="minimal-professional"] .bi-kpi-value {
+        font-size: clamp(15px, 4.2vw, 20px) !important;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    html[data-theme="minimal-professional"] *,
+    html[data-theme="minimal-professional"] *::before,
+    html[data-theme="minimal-professional"] *::after {
+        transition-duration: .01ms !important;
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+    }
+}
 </style>
 
 <script id="global-report-theme-script">
@@ -13694,7 +14017,7 @@ window.__ptScheduleDataLoad(5000);
             var chartTheme = {
                 'light-clean': { text: '#475467', grid: 'rgba(71,84,103,0.14)', palette: ['#2563eb','#16a34a','#7c3aed','#d97706','#0891b2','#e11d48','#4f46e5','#0d9488','#9333ea','#64748b'], tooltip: '#ffffff' },
                 'gradient-card': { text: '#d9cef4', grid: 'rgba(196,166,255,0.16)', palette: ['#a78bfa','#f472b6','#38bdf8','#fbbf24','#34d399','#fb7185','#c084fc','#2dd4bf','#f97316','#818cf8'], tooltip: '#241653' },
-                'minimal-professional': { text: '#515862', grid: 'rgba(81,88,98,0.14)', palette: ['#454b54','#727985','#a0a5ad','#5e7c70','#8a7d68','#66758a','#9a7373','#777f89','#6c827e','#a0a0a0'], tooltip: '#ffffff' }
+                'minimal-professional': { text: '#475467', grid: 'rgba(71,84,103,0.13)', palette: ['#315B78','#27847A','#D19A45','#6D78A8','#B86C62','#5D8FAD','#82936B','#9276A8','#64748B','#C17C4A'], tooltip: '#ffffff' }
             };
             var palette = chartTheme[theme];
             Chart.defaults.color = theme === 'light-clean' ? '#475467' : (theme === 'gradient-card' ? '#d9cef4' : (theme === 'minimal-professional' ? '#515862' : '#c4c8d4'));
