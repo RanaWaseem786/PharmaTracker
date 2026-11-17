@@ -5474,6 +5474,10 @@ function changeSiteLanguage(language){
       <div id="pt3-upload-status" class="pt3-sub" style="margin-top:8px">No file uploaded yet in this session.</div>
     </div>
 
+    <div class="pt3-card" style="margin-bottom:14px" id="pt3-executive-card">
+      <div class="pt3-head"><div><div class="pt3-title">Executive Overview</div><div class="pt3-sub">Live figures from the selected dataset and filters</div></div></div>
+      <div class="pt3-kpis" id="pt3-executive-kpis"></div><div id="pt3-executive-insights" style="margin-top:12px"></div>
+    </div>
     <div class="pt3-card" style="margin-bottom:14px">
       <div class="pt3-head">
         <div><div class="pt3-title">Management filters</div><div class="pt3-sub">Uses the same live dataset as the existing dashboard</div></div>
@@ -5498,7 +5502,7 @@ function changeSiteLanguage(language){
         <div class="pt3-head"><div><div class="pt3-title">Inventory Intelligence</div><div class="pt3-sub">Stock-based signals; cost, reorder and supplier metrics appear only when supplied</div></div></div>
         <div class="pt3-kpis" id="pt3-inv-kpis"></div>
         <div id="pt3-inventory-table" style="margin-top:14px"></div>
-        <div class="pt3-method">Coverage = current stock ÷ estimated average daily units sold over the recent 30-day window. Default operational thresholds: ≤1 week = stock-out risk, &gt;90 days = overstock signal, no sales in the last 90 days = dead-stock signal. These are transparent heuristics, not machine-learning predictions.</div>
+        <div class="pt3-method">Current stock comes only from explicit Inventory / Stock Snapshot / Opening Stock / On Hand rows. Sales invoice quantities are not treated as on-hand stock. Coverage uses trailing 90-day sales only when at least 90 days of dated history exists; otherwise it displays Insufficient Sales Data. Reorder point = daily demand × supplier lead time + configured minimum stock (safety stock), unless an explicit reorder level is supplied.</div>
       </div>
       <div class="pt3-card pt3-col-4">
         <div class="pt3-head"><div><div class="pt3-title">Inventory Health Score</div><div class="pt3-sub">Transparent, availability-aware score</div></div></div>
@@ -5552,6 +5556,8 @@ function changeSiteLanguage(language){
       <div id="pt3-alert-table"></div>
     </div>
 
+    <div class="pt3-card" style="margin-top:14px"><div class="pt3-head"><div><div class="pt3-title">Management Action Center</div><div class="pt3-sub">Prioritized actions supported by current evidence</div></div></div><div id="pt3-action-center"></div></div>
+    <div class="pt3-card" style="margin-top:14px"><div class="pt3-head"><div><div class="pt3-title">Data Quality &amp; Synchronization</div><div class="pt3-sub">Validation and data freshness indicators</div></div></div><div id="pt3-data-quality"></div></div>
     <div class="pt3-card" style="margin-top:14px">
       <div class="pt3-head"><div><div class="pt3-title">Operational Data Requirements</div><div class="pt3-sub">Optional import fields are now supported for future datasets</div></div></div>
       <div id="pt3-data-requirements"></div>
@@ -5729,9 +5735,9 @@ function changeSiteLanguage(language){
     const a=months[months.length-2][1], b=months[months.length-1][1]; return a?((b-a)/a*100):null;
   }
   function territoryLevel(rs){
-    const fields=[['country','Country'],['province','Province / State'],['regionName','Region'],['city','City'],['territory','Territory']];
+    const fields=[['regionName','Region'],['territory','Territory'],['city','City'],['province','Province / State'],['country','Country']];
     const supported=fields.filter(([f])=>rs.some(r=>txt(r[f])));
-    return supported.length?supported[supported.length-1]:['regionName','Region'];
+    return supported.length?supported[0]:['regionName','Region'];
   }
   function renderTerritory(rs){
     const [field,label]=territoryLevel(rs);
@@ -5754,67 +5760,73 @@ function changeSiteLanguage(language){
     if(typeof showToast==='function')showToast(`Territory drill-down: ${label}`,'info');
   };
 
-  /* Memoized per rows-array: renderInventory() and makeAlerts() both need it. */
+  /* Inventory balances must come from explicit stock snapshot rows. Sales invoice
+     quantities are demand, not on-hand stock, and are never summed as inventory. */
   const _p3invCache = new WeakMap();
+  const isInventoryRow = r => /^(inventory|inventory snapshot|stock|stock snapshot|opening stock|on hand|on-hand|stock balance|closing stock|physical stock)$/i.test(txt(r.transactionType));
+  const isSaleRow = r => { const t=key(r.transactionType||'sale'); return !/return|credit note|cancel|void|purchase|inventory|stock/.test(t) && (!t || /sale|invoice|dispatch|outgoing/.test(t)); };
   function inventory(rs){
-    const memo = _p3invCache.get(rs);
-    if (memo) return memo;
-    const today=new Date();
-    const recent=recentDays(rs,30), recent90=recentDays(rs,90);
-    const avgDaily={}; recent.forEach(r=>{const k=key(r.itemName);avgDaily[k]=(avgDaily[k]||0)+units(r)/30;});
-    /* Single pass over the 90-day slice: per-product sales total and last sale
-       timestamp. Previously each group re-scanned this array twice. */
-    const sales90ByKey={}, lastSaleTsByKey={};
-    recent90.forEach(r=>{
-      const k=key(r.itemName);
-      sales90ByKey[k]=(sales90ByKey[k]||0)+units(r);
-      const d=dateObj(r);
-      if(d){ const t=d.getTime(); if(lastSaleTsByKey[k]===undefined || t>lastSaleTsByKey[k]) lastSaleTsByKey[k]=t; }
-    });
-    const groups=groupMap(rs,'itemName').map(g=>{
-      const k=key(g.label), daily=Math.max(avgDaily[k]||0,0), coverage=daily>0?g.units/daily:null;
-      const sales90=sales90ByKey[k]||0;
-      const lastSaleTs=lastSaleTsByKey[k];
-      const lastSale=lastSaleTs===undefined?undefined:new Date(lastSaleTs);
-      let risk='Normal', cls='pt3-ok', signal='Balanced';
-      if(g.units<=0){risk='High';cls='pt3-danger';signal='No stock';}
-      else if(coverage!==null && coverage<=7){risk='High';cls='pt3-danger';signal='Stock-out risk';}
-      else if(coverage!==null && coverage>90){risk='Medium';cls='pt3-warn';signal='Overstock signal';}
-      else if(sales90===0){risk='Medium';cls='pt3-warn';signal='Dead-stock signal';}
-      const cost=n(g.rows.find(r=>n(r.purchaseCost)>0)?.purchaseCost), value=cost>0?g.units*cost:null;
-      const expiry=g.rows.map(r=>txt(r.expiryDate)).filter(Boolean).map(x=>new Date(x)).filter(d=>!isNaN(d)).sort((a,b)=>a-b)[0];
-      const daysExpiry=expiry?Math.ceil((expiry-today)/86400000):null;
-      return {...g,daily,coverage,sales90,lastSale,cost,value,expiry,daysExpiry,risk,cls,signal};
-    }).sort((a,b)=>(b.risk==='High')-(a.risk==='High') || (b.units-a.units));
-    _p3invCache.set(rs, groups);
-    return groups;
+    const memo=_p3invCache.get(rs); if(memo)return memo;
+    const today=new Date(), stockRows=rs.filter(isInventoryRow), sales=rs.filter(isSaleRow);
+    const dated=sales.map(r=>({r,d:dateObj(r)})).filter(x=>x.d&&x.d<=today);
+    const minDate=dated.length?dated.reduce((m,x)=>Math.min(m,x.d.getTime()),Infinity):null;
+    const historyDays=minDate==null?0:Math.floor((today.getTime()-minDate)/86400000)+1;
+    const enough=historyDays>=90, cutoff=new Date(today.getTime()-89*86400000);
+    const sold={}, last={};
+    dated.forEach(({r,d})=>{if(d<cutoff)return;const k=key(r.itemName),q=Math.max(0,units(r));sold[k]=(sold[k]||0)+q;last[k]=Math.max(last[k]||0,d.getTime());});
+    const map=new Map();
+    stockRows.forEach(r=>{const label=txt(r.itemName);if(!label||label==='—')return;const k=key(label);if(!map.has(k))map.set(k,{label,rows:[],units:0});const g=map.get(k);g.rows.push(r);g.units+=Math.max(0,units(r));});
+    const out=[...map.values()].map(g=>{
+      const k=key(g.label),daily=enough?(sold[k]||0)/90:null,coverage=daily>0?g.units/daily:null;
+      const costRows=g.rows.filter(r=>n(r.purchaseCost)>0),value=costRows.length?g.rows.reduce((v,r)=>v+Math.max(0,units(r))*Math.max(0,n(r.purchaseCost)),0):null;
+      const exps=g.rows.map(r=>({d:new Date(txt(r.expiryDate)),qty:Math.max(0,units(r)),batch:txt(r.batchNumber)})).filter(x=>x.qty>0&&txt(x.d)&&!isNaN(x.d)).sort((x,y)=>x.d-y.d);
+      const nearest=exps[0]||null,daysExpiry=nearest?Math.ceil((nearest.d-today)/86400000):null;
+      const lead=g.rows.map(r=>n(r.supplierLeadTime)).filter(x=>x>0), safety=g.rows.map(r=>n(r.minimumStock)).filter(x=>x>=0&&txt(r.minimumStock)!==''), configured=g.rows.map(r=>n(r.reorderLevel)).filter(x=>x>0);
+      const rop=configured.length?Math.max(...configured):(daily!==null&&lead.length&&safety.length?daily*Math.max(...lead)+Math.max(...safety):null);
+      let signal='Insufficient Sales Data',risk='Unknown',cls='pt3-muted';
+      if(enough){if(g.units<=0){signal='Stock-out';risk='High';cls='pt3-danger';}else if(coverage!==null&&coverage<=7){signal='Stock-out risk';risk='High';cls='pt3-danger';}else if(coverage!==null&&coverage>90){signal='Overstock';risk='Medium';cls='pt3-warn';}else if((sold[k]||0)===0){signal='Slow / no movement';risk='Medium';cls='pt3-warn';}else{signal='Balanced';risk='Normal';cls='pt3-ok';}}
+      if(daysExpiry!==null&&daysExpiry<0){signal='Expired batch';risk='High';cls='pt3-danger';}
+      return {...g,daily,coverage,historyDays,historySufficient:enough,sales90:sold[k]||0,lastSale:last[k]?new Date(last[k]):null,value,expiry:nearest?.d||null,daysExpiry,expiryRisk:daysExpiry!==null&&daysExpiry>=0&&daysExpiry<=90,reorderPoint:rop,reorderQty:rop===null?null:Math.max(0,rop-g.units),risk,cls,signal};
+    }).sort((x,y)=>(y.risk==='High')-(x.risk==='High')||y.units-x.units);
+    _p3invCache.set(rs,out);return out;
   }
   function renderInventory(rs){
-    const gs=inventory(rs), totalStock=sum(rs,units), costRows=rs.filter(r=>n(r.purchaseCost)>0);
-    const high=gs.filter(g=>g.risk==='High').length, over=gs.filter(g=>g.signal==='Overstock signal').length, dead=gs.filter(g=>g.signal==='Dead-stock signal').length;
-    $('pt3-inv-kpis').innerHTML=[['Current stock',fmtN(totalStock)],['Products',gs.length.toLocaleString()],['High risk',high.toLocaleString()],['Overstock',over.toLocaleString()],['Dead-stock',dead.toLocaleString()],['Stock value',costRows.length?money(sum(gs,g=>g.value||0)):'Requires inventory data']].map(x=>`<div class="pt3-kpi"><span>${x[0]}</span><b>${x[1]}</b></div>`).join('');
-    $('pt3-inventory-table').innerHTML=gs.length?`<div class="pt3-table-wrap"><table><thead><tr><th>Product</th><th>Current Stock</th><th>Coverage</th><th>Signal</th><th>Stock Value</th><th>Expiry</th><th>Reorder recommendation</th></tr></thead><tbody>${gs.map(g=>{
-      const expiry=g.daysExpiry==null?'Requires expiry-date data':(g.daysExpiry<0?'Expired':g.daysExpiry<=90?`${g.daysExpiry} days`:`${g.daysExpiry} days`);
-      let rec='No immediate signal';
-      if(g.risk==='High') rec=g.units<=0?'Review replenishment':'Consider replenishment based on recent demand';
-      else if(g.signal==='Overstock signal') rec='Review purchasing and demand assumptions';
-      else if(g.signal==='Dead-stock signal') rec='Review slow/dead stock';
-      return `<tr><td><b>${esc(g.label)}</b></td><td>${fmtN(g.units)}</td><td>${g.coverage==null?'Requires sales history':g.coverage.toFixed(1)+' days'}</td><td><span class="pt3-pill ${g.cls}">${esc(g.signal)}</span></td><td>${g.value==null?'Requires cost data':money(g.value)}</td><td>${esc(expiry)}</td><td>${esc(rec)}</td></tr>`;
-    }).join('')}</tbody></table></div>`:'<div class="pt3-empty">No stock records in the current dataset.</div>';
-    renderHealth(gs,rs);
-    renderRequirements(rs);
+    const gs=inventory(rs);
+    if(!gs.length){
+      $('pt3-inv-kpis').innerHTML=[['Current stock','Snapshot required'],['Products','—'],['High risk','—'],['Overstock','—'],['Slow moving','—'],['Stock value','Requires cost data']].map(x=>`<div class="pt3-kpi"><span>${x[0]}</span><b style="font-size:13px">${x[1]}</b></div>`).join('');
+      $('pt3-inventory-table').innerHTML='<div class="pt3-empty">No explicit inventory snapshot rows found. Import stock rows with Transaction Type = Inventory, Stock Snapshot, Opening Stock or On Hand. Sales invoice quantities are not treated as current stock.</div>';
+      $('pt3-health').innerHTML='<b>Not scoreable</b><br><span class="pt3-small">Verified on-hand stock records are required.</span>';renderRequirements(rs);return;
+    }
+    const total=sum(gs,g=>g.units),high=gs.filter(g=>g.risk==='High').length,over=gs.filter(g=>g.signal==='Overstock').length,slow=gs.filter(g=>g.signal==='Slow / no movement').length,valued=gs.filter(g=>g.value!==null);
+    $('pt3-inv-kpis').innerHTML=[['Current stock',fmtN(total)],['Products',gs.length.toLocaleString()],['High risk',high],['Overstock',over],['Slow moving',slow],['Stock value',valued.length?money(sum(valued,g=>g.value)):'Requires cost data']].map(x=>`<div class="pt3-kpi"><span>${x[0]}</span><b>${x[1]}</b></div>`).join('');
+    $('pt3-inventory-table').innerHTML=`<div class="pt3-table-wrap"><table><thead><tr><th>Product</th><th>On-hand</th><th>Coverage</th><th>Signal</th><th>Stock value</th><th>Nearest expiry</th><th>Reorder point</th><th>Suggested qty</th></tr></thead><tbody>${gs.map(g=>`<tr><td><b>${esc(g.label)}</b></td><td>${fmtN(g.units)}</td><td>${g.coverage==null?'Insufficient Sales Data':g.coverage.toFixed(1)+' days'}</td><td><span class="pt3-pill ${g.cls}">${esc(g.signal)}</span></td><td>${g.value==null?'Requires cost data':money(g.value)}</td><td>${g.daysExpiry==null?'Requires batch expiry':g.daysExpiry<0?'Expired':g.daysExpiry+' days'}</td><td>${g.reorderPoint==null?'Requires lead time + safety stock':fmtN(g.reorderPoint)}</td><td>${g.reorderQty==null?'Reorder inputs required':g.reorderQty?`Replenish ${fmtN(g.reorderQty)}`:'At / above reorder point'}</td></tr>`).join('')}</tbody></table></div>`;
+    renderHealth(gs,rs);renderRequirements(rs);
   }
   function renderHealth(gs,rs){
-    if(!gs.length){$('pt3-health').innerHTML='No inventory records.';return;}
-    const scored=gs.filter(g=>g.coverage!=null);
-    if(!scored.length){$('pt3-health').innerHTML='<b>Requires inventory data</b><br><span class="pt3-small">Stock exists, but no usable recent sales history is available to calculate coverage-based health.</span>';return;}
-    const normal=gs.filter(g=>g.risk==='Normal').length/gs.length*100;
-    const coverageGood=scored.filter(g=>g.coverage>7&&g.coverage<=90).length/scored.length*100;
-    const movement=gs.filter(g=>g.sales90>0).length/gs.length*100;
-    const score=Math.round((normal+coverageGood+movement)/3);
-    $('pt3-health').innerHTML=`<div style="font-size:34px;font-weight:800">${score}<span style="font-size:13px;color:var(--muted)"> / 100</span></div><div style="margin-top:8px">Normal stock: ${normal.toFixed(0)}%<br>Healthy coverage: ${coverageGood.toFixed(0)}%<br>Active movement: ${movement.toFixed(0)}%</div><div style="margin-top:10px;font-size:10px;color:var(--muted)">Expiry, cost, supplier lead time, minimum stock and reorder level are not included unless present.</div>`;
+    const c=[],known=gs.filter(g=>g.historySufficient);
+    if(known.length){
+      c.push(['Stock availability',known.filter(g=>g.units>0).length/known.length*100]);
+      c.push(['Stock-out risk',known.filter(g=>g.risk!=='High').length/known.length*100]);
+      c.push(['Overstock control',known.filter(g=>g.signal!=='Overstock').length/known.length*100]);
+      c.push(['Slow-movement control',known.filter(g=>g.signal!=='Slow / no movement').length/known.length*100]);
+    }
+    const ex=gs.filter(g=>g.expiry!==null);if(ex.length)c.push(['Expiry risk',ex.filter(g=>!g.expiryRisk&&g.daysExpiry>=0).length/ex.length*100]);
+    const rp=gs.filter(g=>g.reorderPoint!==null);if(rp.length)c.push(['Reorder compliance',rp.filter(g=>g.units>g.reorderPoint).length/rp.length*100]);
+    if(!c.length){$('pt3-health').innerHTML='<b>Not scoreable</b><br><span class="pt3-small">Insufficient sales history and no available expiry/reorder components.</span>';return;}
+    const score=Math.round(avg(c.map(x=>x[1]))),coverage=Math.round(c.length/6*100);
+    $('pt3-health').innerHTML=`<div style="font-size:34px;font-weight:800">${score}<span style="font-size:13px;color:var(--muted)"> / 100</span></div><div>Data coverage: <b>${coverage}%</b> (${c.length}/6 components)</div><div style="margin-top:8px">${c.map(x=>`${esc(x[0])}: ${x[1].toFixed(0)}%`).join('<br>')}</div><div class="pt3-small pt3-muted" style="margin-top:8px">Unavailable components are excluded from the score.</div>`;
   }
 
+  function forecastSeries(rs){
+    const by={};rs.filter(isSaleRow).forEach(r=>{const k=monthKey(r);if(k)by[k]=(by[k]||0)+revenue(r);});
+    const m=Object.entries(by).sort((a,b)=>a[0].localeCompare(b[0]));
+    if(m.length<4)return {insufficient:true,sample:m.length,daily:0,sd:0,accuracy:null,method:'At least four dated monthly observations are required for the moving-average forecast and backtest.'};
+    const residual=[];
+    for(let i=Math.max(3,m.length-3);i<m.length;i++){const base=m.slice(i-3,i).map(x=>x[1]);residual.push(m[i][1]-avg(base));}
+    const mae=avg(residual.map(Math.abs)),mape=avg(residual.map((e,i)=>m[m.length-residual.length+i][1]?Math.abs(e)/Math.abs(m[m.length-residual.length+i][1])*100:null).filter(x=>x!==null));
+    const bias=avg(residual),sd=residual.length>1?stdev(residual):mae;
+    return {daily:avg(m.slice(-3).map(x=>x[1]))/30.4375,sd:sd/30.4375,sample:m.length,accuracy:{mae,mape,bias,backtestCount:residual.length},method:'Three-month moving-average forecast; uncertainty uses rolling-origin monthly backtest residuals. Estimates are not guarantees.'};
+  }
   function forecastSeries(rs){
     const byDay={}; rs.forEach(r=>{const k=dateKey(r);if(k){byDay[k]=(byDay[k]||0)+revenue(r);}});
     const days=Object.entries(byDay).sort((a,b)=>a[0].localeCompare(b[0]));
@@ -5827,16 +5839,18 @@ function changeSiteLanguage(language){
     return {method:'Insufficient historical data for a reliable projection. Add more dated sales history.',daily:0,sd:0,sample:months.length,fallback:true,insufficient:true};
   }
   function forecast(rs,days){
-    const f=forecastSeries(rs), val=f.daily*days, margin=1.96*f.sd*Math.sqrt(days);
+    const f=forecastSeries(rs);
+    if(f.insufficient)return {...f,days,value:null,low:null,high:null};
+    const val=f.daily*days,margin=1.96*f.sd*Math.sqrt(days);
     return {...f,days,value:Math.max(0,val),low:Math.max(0,val-margin),high:Math.max(0,val+margin)};
   }
   function entityForecast(rs,field,days){
     return groupMap(rs,field).map(g=>{const f=forecast(g.rows,days);return {...g,...f};}).sort((a,b)=>b.value-a.value);
   }
   function renderForecast(rs){
-    const f=forecast(rs,state.days), total=sum(rs,revenue), prev=lastNMonths(rs,2), previous=prev.length>1?prev[prev.length-2][1]:null;
+    const f=forecast(rs,state.days), total=sum(rs.filter(isSaleRow),revenue), prev=lastNMonths(rs.filter(isSaleRow),2), previous=prev.length>1?prev[prev.length-2][1]:null;
     const change=previous==null||previous===0?null:((f.value-previous)/previous*100);
-    $('pt3-forecast-kpis').innerHTML=[['Historical sales',money(total)],['Forecast',money(f.value)],['Low range',money(f.low)],['High range',money(f.high)],['vs last period',change==null?'—':`${change>=0?'+':''}${change.toFixed(1)}%`],['History',f.sample.toLocaleString()]].map(x=>`<div class="pt3-kpi"><span>${x[0]}</span><b>${x[1]}</b></div>`).join('');
+    $('pt3-forecast-kpis').innerHTML=[['Historical sales',money(total)],['Forecast',f.value==null?'Insufficient history':money(f.value)],['Low range',f.low==null?'—':money(f.low)],['High range',f.high==null?'—':money(f.high)],['MAPE',f.accuracy?.mape==null?'Not validated':f.accuracy.mape.toFixed(1)+'%'],['Backtest months',String(f.accuracy?.backtestCount||0)]].map(x=>`<div class="pt3-kpi"><span>${x[0]}</span><b>${x[1]}</b></div>`).join('');
     const breakdown=(title,field)=>{const data=entityForecast(rs,field,state.days).slice(0,8);return `<div style="margin-bottom:12px"><div class="pt3-small" style="font-weight:700;margin-bottom:6px">${title}</div>${data.length?`<div class="pt3-table-wrap"><table><thead><tr><th>${title}</th><th>Historical</th><th>Forecast</th><th>Range</th></tr></thead><tbody>${data.map(g=>`<tr><td>${esc(g.label)}</td><td>${money(g.revenue)}</td><td>${money(g.value)}</td><td>${money(g.low)} – ${money(g.high)}</td></tr>`).join('')}</tbody></table></div>`:'<div class="pt3-empty">No history available.</div>'}</div>`};
     $('pt3-forecast-table').innerHTML=breakdown('Product','itemName')+breakdown('Region','regionName')+breakdown('Rep','bookingMan')+breakdown('Customer','customerName');
     $('pt3-forecast-method').textContent=f.method;
@@ -5870,7 +5884,7 @@ function changeSiteLanguage(language){
   }
   function renderAnomalies(rs){
     state.anomalies=buildAnomalies(rs);
-    $('pt3-anomaly-table').innerHTML=state.anomalies.length?`<div class="pt3-table-wrap"><table><thead><tr><th>What happened</th><th>When</th><th>Where / Entity</th><th>Metric</th><th>How unusual</th></tr></thead><tbody>${state.anomalies.map(a=>`<tr><td><span class="pt3-pill pt3-warn">Unusual pattern detected</span><br><span class="pt3-small">${esc(a.explanation)}</span></td><td>${esc(a.month)}</td><td>${esc(a.type)} · ${esc(a.entity)}</td><td>${esc(a.metric)}<br>${money(a.value)}</td><td>${a.z==null?'≥50% change fallback':`z = ${a.z.toFixed(2)}`}</td></tr>`).join('')}</tbody></table></div>`:'<div class="pt3-empty">No unusual patterns met the current threshold.</div>';
+    $('pt3-anomaly-table').innerHTML=state.anomalies.length?`<div class="pt3-table-wrap"><table><thead><tr><th>What happened</th><th>When</th><th>Where / Entity</th><th>Metric</th><th>Historical average</th><th>Deviation</th><th>Financial impact</th><th>Method / severity</th></tr></thead><tbody>${state.anomalies.map(a=>`<tr><td><span class="pt3-pill pt3-warn">Unusual pattern detected</span><br><span class="pt3-small">${esc(a.explanation)}</span></td><td>${esc(a.month)}</td><td>${esc(a.type)} · ${esc(a.entity)}</td><td>${esc(a.metric)}<br>${money(a.value)}</td><td>${a.average==null?'—':money(a.average)}</td><td>${a.deviationPct==null?'—':`${a.deviationPct>=0?'+':''}${a.deviationPct.toFixed(1)}%`}</td><td>${a.impact==null?'—':money(a.impact)}</td><td>${a.z==null?'Low-sample comparison':`z = ${a.z.toFixed(2)} · ${Math.abs(a.z)>=3?'High':Math.abs(a.z)>=2?'Medium':'Low'}`}</td></tr>`).join('')}</tbody></table></div>`:'<div class="pt3-empty">No unusual patterns met the current threshold.</div>';
   }
 
   function makeAlerts(rs){
@@ -5878,8 +5892,8 @@ function changeSiteLanguage(language){
     const dimsForRows=(rlist)=>{const r=rlist?.[0]||{};return {region:txt(r.regionName),product:txt(r.itemName),customer:txt(r.customerName),rep:txt(r.bookingMan)};};
     const push=(obj,rlist)=>a.push({...obj,...dimsForRows(rlist)});
     const gs=inventory(rs);
-    gs.filter(g=>g.risk==='High').forEach(g=>push({category:'Inventory',severity:'High',date:dateKey(g.rows[g.rows.length-1])||'',metric:g.signal,entity:g.label,explanation:`${g.signal} based on current stock and recent sales coverage.`,action:g.units<=0?'Review replenishment availability':'Review replenishment against recent demand.'},g.rows));
-    gs.filter(g=>g.signal==='Overstock signal'||g.signal==='Dead-stock signal').forEach(g=>push({category:'Inventory',severity:'Medium',date:dateKey(g.rows[g.rows.length-1])||'',metric:g.signal,entity:g.label,explanation:g.signal==='Overstock signal'?`Estimated coverage is ${g.coverage?.toFixed(1)} days.`:'No unit sales were observed in the recent 90-day window.',action:'Review demand, stock policy and purchasing assumptions.'},g.rows));
+    gs.filter(g=>g.risk==='High').forEach(g=>push({category:'Inventory',severity:'High',date:new Date().toISOString().slice(0,10),metric:g.signal,entity:g.label,explanation:`${g.signal} based on current stock and recent sales coverage.`,action:g.units<=0?'Review replenishment availability':'Review replenishment against recent demand.'},g.rows));
+    gs.filter(g=>g.signal==='Overstock'||g.signal==='Slow / no movement'||g.signal==='Expired batch').forEach(g=>push({category:'Inventory',severity:'Medium',date:new Date().toISOString().slice(0,10),metric:g.signal,entity:g.label,explanation:g.signal==='Overstock signal'?`Estimated coverage is ${g.coverage?.toFixed(1)} days.`:'No recent sales in the observed 90-day window; validate history before dead-stock classification.',action:'Review demand, stock policy and purchasing assumptions.'},g.rows));
     const f=forecast(rs,state.days);
     let target=0; try{const now=new Date(),p=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;target=Object.values((targetState?.periods||{})[p]||{}).reduce((x,y)=>x+n(y),0)}catch(e){}
     if(target&&f.value<target)push({category:'Forecast',severity:'Medium',date:new Date().toISOString().slice(0,10),metric:'Projected gap',entity:'Current target',explanation:`${money(f.value)} forecast versus ${money(target)} configured target.`,action:'Review run-rate, target assumptions and planned activity.'},rs);
@@ -5887,6 +5901,30 @@ function changeSiteLanguage(language){
     const seen=new Set(), dedup=[];
     a.forEach(x=>{const id=key([x.category,x.severity,x.date,x.metric,x.entity].join('|'));if(!seen.has(id)){seen.add(id);dedup.push(x);}});
     return dedup;
+  }
+  function renderExecutive(rs){
+    const sales=rs.filter(isSaleRow),st=entityStats(sales),ms=lastNMonths(sales,2),prev=ms.length>1?ms[ms.length-2][1]:null,cur=ms.length?ms[ms.length-1][1]:null;
+    const gr=prev>0&&cur!=null?(cur-prev)/prev*100:null,inv=inventory(rs),risks=inv.filter(g=>g.risk==='High').length;
+    const regions=groupMap(sales,'regionName').filter(g=>g.label!=='Unassigned').sort((a,b)=>b.revenue-a.revenue);
+    $('pt3-executive-kpis').innerHTML=[['Revenue',money(st.revenue)],['Growth',gr==null?'Insufficient history':`${gr>=0?'+':''}${gr.toFixed(1)}%`],['Customers',st.customers],['Products',st.products],['Sales reps',st.reps],['Inventory risks',inv.length?risks:'Snapshot required']].map(x=>`<div class="pt3-kpi"><span>${x[0]}</span><b style="font-size:15px">${x[1]}</b></div>`).join('');
+    $('pt3-executive-insights').innerHTML=regions.length?`<div class="pt3-small"><b>Top region:</b> ${esc(regions[0].label)} · ${money(regions[0].revenue)}${regions.length>1?` &nbsp; | &nbsp; <b>Lowest region:</b> ${esc(regions[regions.length-1].label)} · ${money(regions[regions.length-1].revenue)}`:''}</div>`:'<div class="pt3-small">No region data available.</div>';
+  }
+  function renderActionCenter(rs){
+    const a=[];
+    inventory(rs).forEach(g=>{if(g.risk==='High')a.push(['Critical',g.label,`${g.signal}; on-hand ${fmtN(g.units)}.`,`Verify physical stock and review urgent replenishment.`]);else if(g.signal==='Overstock')a.push(['Medium',g.label,`${g.coverage.toFixed(1)} days estimated coverage.`,`Review demand and purchasing cadence.`]);else if(g.signal==='Slow / no movement')a.push(['Medium',g.label,'No sales in the observed 90-day window.','Validate sales history before classifying as dead stock.']);});
+    groupMap(rs.filter(isSaleRow),'regionName').filter(g=>g.label!=='Unassigned').forEach(g=>{const gr=growth(g.rows);if(gr!==null&&gr<=-25)a.push(['High',g.label,`Revenue declined ${Math.abs(gr).toFixed(1)}% vs prior observed month.`,'Review customer coverage, rep activity and large-account changes.']);});
+    $('pt3-action-center').innerHTML=a.length?`<div class="pt3-table-wrap"><table><thead><tr><th>Priority</th><th>Entity</th><th>Evidence</th><th>Recommended action</th></tr></thead><tbody>${a.slice(0,30).map(x=>`<tr><td>${esc(x[0])}</td><td><b>${esc(x[1])}</b></td><td>${esc(x[2])}</td><td>${esc(x[3])}</td></tr>`).join('')}</tbody></table></div>`:'<div class="pt3-empty">No actions meet the current evidence thresholds.</div>';
+  }
+  function renderDataQuality(rs){
+    const seen=new Set();let dup=0,missingDate=0,missingProduct=0,invalidQty=0,missingRevenue=0;
+    rs.forEach(r=>{const id=txt(r.invoiceId);if(id){const k=[key(id),key(r.itemId||r.itemName),key(r.batchNumber)].join('|');if(seen.has(k))dup++;else seen.add(k);}
+      if(!dateKey(r))missingDate++;if(!txt(r.itemName)||txt(r.itemName)==='—')missingProduct++;
+      if(r.stock!==''&&r.stock!=null&&(!Number.isFinite(Number(r.stock))||Number(r.stock)<0))invalidQty++;
+      if(!Number.isFinite(Number(r.netAmount))&&!Number.isFinite(Number(r.grossAmount)))missingRevenue++;
+    });
+    const dates=rs.map(dateKey).filter(Boolean).sort(),latest=dates.length?dates[dates.length-1]:'Unavailable',earliest=dates.length?dates[0]:'Unavailable';
+    const vals=[['Duplicate invoice/product/batch keys',dup],['Missing/invalid dates',missingDate],['Missing product mappings',missingProduct],['Invalid/negative quantities',invalidQty],['Missing revenue values',missingRevenue],['Latest available data date',latest],['Earliest data date',earliest],['Last sync time','Not exposed by existing data API']];
+    $('pt3-data-quality').innerHTML=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px">${vals.map(x=>`<div class="pt3-kpi"><span>${esc(x[0])}</span><b style="font-size:14px">${esc(x[1])}</b></div>`).join('')}</div><div class="pt3-method">Duplicate candidates are flagged for review, not deleted. Last synchronization time cannot be verified because the current data interface does not expose a server sync timestamp.</div>`;
   }
   function renderRequirements(rs){
     const fields=[['expiryDate','Expiry date'],['purchaseCost','Purchase cost'],['supplierLeadTime','Supplier lead time'],['minimumStock','Minimum stock'],['reorderLevel','Reorder level'],['country/province/city/territory','Geographic detail']];
@@ -5903,9 +5941,9 @@ function changeSiteLanguage(language){
   window.pt3RenderAlerts=function(){
     const cat=$('pt3-alert-category')?.value||'', sev=$('pt3-alert-severity')?.value||'', dt=$('pt3-alert-date')?.value||'';
     const ar=$('pt3-alert-region')?.value||'', ap=$('pt3-alert-product')?.value||'', ac=$('pt3-alert-customer')?.value||'', arep=$('pt3-alert-rep')?.value||'';
-    const reviewed=JSON.parse(localStorage.getItem('pt3_reviewed_alerts')||'{}'), dismissed=JSON.parse(localStorage.getItem('pt3_dismissed_alerts')||'{}');
+    const statuses=(()=>{let x={};try{x=JSON.parse(localStorage.getItem('pt3_alert_status_v2')||'{}')}catch(e){}try{const oldR=JSON.parse(localStorage.getItem('pt3_reviewed_alerts')||'{}'),oldD=JSON.parse(localStorage.getItem('pt3_dismissed_alerts')||'{}');Object.keys(oldR).forEach(k=>{if(oldR[k]&&!x[k])x[k]={status:'Reviewed'};});Object.keys(oldD).forEach(k=>{if(oldD[k]&&!x[k])x[k]={status:'Dismissed'};});}catch(e){}return x;})();
     let aa=state.alerts.filter(a=>(!cat||a.category===cat)&&(!sev||a.severity===sev)&&(!dt||a.date===dt)&&(!ar||key(a.region)===key(ar))&&(!ap||key(a.product)===key(ap))&&(!ac||key(a.customer)===key(ac))&&(!arep||key(a.rep)===key(arep)));
-    $('pt3-alert-table').innerHTML=aa.length?`<div class="pt3-table-wrap"><table><thead><tr><th>Category</th><th>Severity</th><th>Date</th><th>Metric</th><th>Entity</th><th>Explanation</th><th>Suggested next action</th><th>Status</th></tr></thead><tbody>${aa.map((a,i)=>{const id=key([a.category,a.date,a.metric,a.entity].join('|'));const status=dismissed[id]?'Dismissed':reviewed[id]?'Reviewed':'Open';return `<tr><td>${esc(a.category)}</td><td><span class="pt3-pill ${a.severity==='High'?'pt3-danger':a.severity==='Medium'?'pt3-warn':'pt3-ok'}">${a.severity}</span></td><td>${esc(a.date||'—')}</td><td>${esc(a.metric)}</td><td>${esc(a.entity)}</td><td>${esc(a.explanation)}</td><td>${esc(a.action)}</td><td><div class="pt3-alert-actions"><button class="btn btn-ghost pt3-small" onclick="pt3Review('${id}')">Mark reviewed</button><button class="btn btn-ghost pt3-small" onclick="pt3Dismiss('${id}')">Dismiss</button><button class="btn btn-ghost pt3-small" onclick="pt3Details('${id}')">View details</button><span class="pt3-muted pt3-small">${status}</span></div></td></tr>`}).join('')}</tbody></table></div>`:'<div class="pt3-empty">No alerts match the selected filters.</div>';
+    $('pt3-alert-table').innerHTML=aa.length?`<div class="pt3-table-wrap"><table><thead><tr><th>Category</th><th>Severity</th><th>Date</th><th>Metric</th><th>Entity</th><th>Explanation</th><th>Suggested next action</th><th>Status</th></tr></thead><tbody>${aa.map((a,i)=>{const id=key([a.category,a.date,a.metric,a.entity].join('|'));const status=statuses[id]?.status||'Open';return `<tr><td>${esc(a.category)}</td><td><span class="pt3-pill ${a.severity==='High'?'pt3-danger':a.severity==='Medium'?'pt3-warn':'pt3-ok'}">${a.severity}</span></td><td>${esc(a.date||'—')}</td><td>${esc(a.metric)}</td><td>${esc(a.entity)}</td><td>${esc(a.explanation)}</td><td>${esc(a.action)}</td><td><div class="pt3-alert-actions"><button class="btn btn-ghost pt3-small" onclick="pt3SetAlertStatus('${id}','Reviewed')">Reviewed</button><button class="btn btn-ghost pt3-small" onclick="pt3SetAlertStatus('${id}','In Progress')">In Progress</button><button class="btn btn-ghost pt3-small" onclick="pt3SetAlertStatus('${id}','Resolved')">Resolve</button><button class="btn btn-ghost pt3-small" onclick="pt3Dismiss('${id}')">Dismiss</button><button class="btn btn-ghost pt3-small" onclick="pt3Details('${id}')">Details</button><span class="pt3-muted pt3-small">${status}</span></div></td></tr>`}).join('')}</tbody></table></div>`:'<div class="pt3-empty">No alerts match the selected filters.</div>';
   };
   window.pt3Review=function(id){const x=JSON.parse(localStorage.getItem('pt3_reviewed_alerts')||'{}');x[id]=true;localStorage.setItem('pt3_reviewed_alerts',JSON.stringify(x));pt3RenderAlerts();};
   window.pt3Dismiss=function(id){const x=JSON.parse(localStorage.getItem('pt3_dismissed_alerts')||'{}');x[id]=true;localStorage.setItem('pt3_dismissed_alerts',JSON.stringify(x));pt3RenderAlerts();};
@@ -5922,7 +5960,7 @@ function changeSiteLanguage(language){
     return out;
   };
   window.pt3Refresh=function(){
-    const rs=filtered(); renderTerritory(rs); renderInventory(rs); renderForecast(rs,state.days); renderAnomalies(rs); renderAlertsBase(rs);
+    const rs=filtered(); renderExecutive(rs); renderTerritory(rs); renderInventory(rs); renderForecast(rs,state.days); renderAnomalies(rs); renderAlertsBase(rs); renderActionCenter(rs); renderDataQuality(rs);
   };
   function injectNav(){
     if(document.querySelector('.nav-item[data-page="part3"]'))return;
