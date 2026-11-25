@@ -7713,6 +7713,17 @@ function projectionSaveState() {
 }
 function projectionNumber(value) { return Number(String(value ?? 0).replace(/[^0-9.-]/g, '')) || 0; }
 function projectionMoney(value) { return (typeof fmt === 'function' ? fmt(value) : '₨' + projectionNumber(value).toLocaleString(undefined,{maximumFractionDigits:2})); }
+function projectionCompactMoney(value) {
+    const n = projectionNumber(value);
+    const abs = Math.abs(n);
+    const prefix = projectionMoney(0).replace(/[0-9,.,\s-]+$/g, '');
+    const compact = abs >= 1000000
+        ? (n / 1000000).toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1') + 'M'
+        : abs >= 1000
+            ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K'
+            : n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+    return prefix + compact;
+}
 function projectionEscape(value) { return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function projectionKey(...parts) { return parts.map(v => String(v ?? '').trim()).join('¦'); }
 function projectionMonthKey(date = new Date()) { return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`; }
@@ -7903,8 +7914,8 @@ function renderProjectionPerformanceChart(values){
             {type:'bar',label:'Projected Sales',data:forecastSeries,backgroundColor:'rgba(249,115,22,.78)',borderColor:'#f97316',borderWidth:1,borderRadius:6},
             {type:'line',label:'Target Achieved %',data:achievedSeries,yAxisID:'yPercent',borderColor:'#f472b6',backgroundColor:'#f472b6',pointRadius:5,pointHoverRadius:7,tension:0,spanGaps:false}
         ]},
-        options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:'bottom',labels:{color:textColor,usePointStyle:true,boxWidth:9,padding:16}},tooltip:{callbacks:{label:function(ctx){const v=Number(ctx.parsed.y)||0;return ctx.dataset.yAxisID==='yPercent'?`${ctx.dataset.label}: ${v.toFixed(1)}%`:`${ctx.dataset.label}: ${projectionMoney(v)}`;}}}},
-            scales:{x:{ticks:{color:textColor},grid:{display:false}},y:{beginAtZero:true,ticks:{color:textColor,callback:v=>projectionMoney(v)},grid:{color:gridColor}},yPercent:{position:'right',beginAtZero:true,suggestedMax:100,grid:{drawOnChartArea:false},ticks:{color:'#f472b6',callback:v=>`${v}%`}}}},
+        options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:'bottom',labels:{color:textColor,usePointStyle:true,boxWidth:9,padding:16}},tooltip:{callbacks:{label:function(ctx){const v=Number(ctx.parsed.y)||0;return ctx.dataset.yAxisID==='yPercent'?`${ctx.dataset.label}: ${v.toFixed(1)}%`:`${ctx.dataset.label}: ${projectionCompactMoney(v)}`;}}}},
+            scales:{x:{ticks:{color:textColor},grid:{display:false}},y:{beginAtZero:true,ticks:{color:textColor,callback:v=>projectionCompactMoney(v)},grid:{color:gridColor}},yPercent:{position:'right',beginAtZero:true,suggestedMax:100,grid:{drawOnChartArea:false},ticks:{color:'#f472b6',callback:v=>`${v}%`}}}},
         plugins:[{
             id:'projectionBarValueLabels',
             afterDatasetsDraw(chart){
@@ -7922,7 +7933,7 @@ function renderProjectionPerformanceChart(values){
                         const raw=dataset.data[index];
                         if(raw===null||raw===undefined||!Number.isFinite(Number(raw))||Number(raw)===0) return;
                         const pos=bar.getProps(['x','y'],true);
-                        let label=projectionMoney(Number(raw));
+                        let label=projectionCompactMoney(Number(raw));
                         const maxWidth=Math.max(42,bar.width*1.8);
                         ctx.font='600 9px Inter, Arial, sans-serif';
                         while(ctx.measureText(label).width>maxWidth && ctx.font.match(/(\d+)px/)[1]>7){
