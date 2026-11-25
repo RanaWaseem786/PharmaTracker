@@ -1531,6 +1531,8 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 .projection-table input,.projection-assignment input{width:100%;min-width:92px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:7px 8px;font:inherit;outline:none}.projection-table input:focus,.projection-assignment input:focus{border-color:var(--accent)}
 .projection-table td{white-space:nowrap}.projection-table .readonly{color:var(--muted)}.projection-assignment{display:grid;grid-template-columns:1fr 1fr 130px 120px auto;gap:10px;align-items:end}.projection-note{font-size:12px;color:var(--muted);line-height:1.5;margin-top:12px}.projection-toolbar,.projection-summary,.projection-assignment,.projection-table table{font-size:13px}.projection-control label,.projection-kpi span{font-size:12px}.projection-kpi strong{font-size:20px}.projection-target-upload{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:14px 0}
 @media(max-width:900px){.projection-summary{grid-template-columns:repeat(2,minmax(150px,1fr))}.projection-assignment{grid-template-columns:1fr 1fr}}
+.projection-chart-card{margin-top:16px}.projection-chart-wrap{position:relative;width:100%;height:340px;min-height:280px}.projection-chart-empty{display:none;text-align:center;color:var(--muted);padding:38px 16px;border:1px dashed var(--border);border-radius:10px;font-size:13px}
+@media(max-width:600px){.projection-chart-wrap{height:290px;min-height:250px}}
 
     </style>
 
@@ -4335,6 +4337,11 @@ function changeSiteLanguage(language){
                 <tbody id="projectionTableBody"></tbody>
             </table></div>
             <div id="projectionEmpty" class="empty-state" style="display:none"><i class="fas fa-bullseye"></i><h3>No sales data yet</h3><p>Upload an Excel or CSV file to create projections.</p></div>
+        </div>
+        <div class="card projection-chart-card">
+            <div class="card-header"><div><div class="card-title">Sales Target vs Actual vs Projection</div><div class="card-sub">Live comparison using the same saved target and sales calculations shown in the table above.</div></div></div>
+            <div id="projectionChartEmpty" class="projection-chart-empty">No projection data available yet. Upload sales data and enter a target to display the chart.</div>
+            <div class="projection-chart-wrap" id="projectionChartWrap"><canvas id="projectionPerformanceChart" role="img" aria-label="Sales target versus actual sales and projection chart"></canvas></div>
         </div>
     </div>
 
@@ -7689,7 +7696,7 @@ function clearAllData() {
    PROJECTION & TARGET — stored independently from uploaded sales.
 ═══════════════════════════════════════════════ */
 const PROJECTION_STORAGE_KEY = 'pharmaTrackerProjectionTargetsV1';
-let projectionState = { rowTargets:{}, lastMonthSales:{}, productTargets:{}, bookerPercentages:{}, productUnitTargets:{} };
+let projectionState = { rowTargets:{}, lastMonthSales:{}, productTargets:{}, bookerPercentages:{}, productUnitTargets:{}, productTPs:{}, productValueTargets:{} };
 
 function projectionStorageKeyForCurrentUser() {
     const email = (typeof currentUser !== 'undefined' && currentUser && currentUser.email)
@@ -7697,7 +7704,7 @@ function projectionStorageKeyForCurrentUser() {
     return email ? `${PROJECTION_STORAGE_KEY}::user::${email}` : `${PROJECTION_STORAGE_KEY}::guest`;
 }
 function projectionLoadState() {
-    const defaults = { rowTargets:{}, lastMonthSales:{}, productTargets:{}, bookerPercentages:{}, productUnitTargets:{} };
+    const defaults = { rowTargets:{}, lastMonthSales:{}, productTargets:{}, bookerPercentages:{}, productUnitTargets:{}, productTPs:{}, productValueTargets:{} };
     try { projectionState = { ...defaults, ...(JSON.parse(localStorage.getItem(projectionStorageKeyForCurrentUser())) || {}) }; }
     catch (e) { projectionState = defaults; }
 }
@@ -7853,6 +7860,54 @@ function renderProjectionBookerBreakdown(booker,unitsMode){
         }
     }
 }
+let projectionPerformanceChartInstance=null;
+function renderProjectionPerformanceChart(values){
+    const canvas=document.getElementById('projectionPerformanceChart');
+    const empty=document.getElementById('projectionChartEmpty');
+    const wrap=document.getElementById('projectionChartWrap');
+    if(!canvas||!empty||!wrap)return;
+    const hasSales=(rawData||[]).length>0;
+    if(!hasSales){
+        if(projectionPerformanceChartInstance){projectionPerformanceChartInstance.destroy();projectionPerformanceChartInstance=null;}
+        wrap.style.display='none';empty.style.display='block';return;
+    }
+    wrap.style.display='block';empty.style.display='none';
+    if(typeof Chart==='undefined'){
+        empty.textContent='Chart library is unavailable. The projection table remains available.';
+        empty.style.display='block';wrap.style.display='none';return;
+    }
+    if(projectionPerformanceChartInstance){projectionPerformanceChartInstance.destroy();projectionPerformanceChartInstance=null;}
+    const styles=getComputedStyle(document.documentElement);
+    const textColor=styles.getPropertyValue('--muted').trim()||'#a1a1aa';
+    const gridColor=styles.getPropertyValue('--border').trim()||'rgba(255,255,255,.10)';
+    const currentMonth=projectionMonthKey();
+    const monthTotals=new Map();
+    (rawData||[]).forEach(row=>{const month=String(row.invoiceDate||'').slice(0,7);if(!/^\d{4}-\d{2}$/.test(month))return;monthTotals.set(month,(monthTotals.get(month)||0)+projectionNumber(row.netAmount));});
+    const monthLabels=[...monthTotals.keys()].sort().slice(-12);
+    if(!monthLabels.includes(currentMonth))monthLabels.push(currentMonth);
+    const currentIndex=monthLabels.indexOf(currentMonth),blankSeries=()=>monthLabels.map(()=>null);
+    const targetSeries=blankSeries(),todaySeries=blankSeries(),lastMonthSeries=blankSeries(),forecastSeries=blankSeries(),achievedSeries=blankSeries();
+    targetSeries[currentIndex]=Math.max(0,projectionNumber(values.target));
+    todaySeries[currentIndex]=Math.max(0,projectionNumber(values.today));
+    lastMonthSeries[currentIndex]=Math.max(0,projectionNumber(values.lastMonth));
+    forecastSeries[currentIndex]=Math.max(0,projectionNumber(values.forecast));
+    achievedSeries[currentIndex]=values.target?projectionNumber(values.toDate)/projectionNumber(values.target)*100:0;
+    const actualSeries=monthLabels.map(month=>monthTotals.has(month)?monthTotals.get(month):0);
+    projectionPerformanceChartInstance=new Chart(canvas.getContext('2d'),{
+        type:'bar',
+        data:{labels:monthLabels,datasets:[
+            {type:'bar',label:'Total Target',data:targetSeries,backgroundColor:'rgba(212,175,55,.82)',borderColor:'#d4af37',borderWidth:1,borderRadius:6},
+            {type:'bar',label:'Total Today Sale',data:todaySeries,backgroundColor:'rgba(56,189,248,.78)',borderColor:'#38bdf8',borderWidth:1,borderRadius:6},
+            {type:'bar',label:'Total To-Date Sale',data:actualSeries,backgroundColor:'rgba(34,197,94,.78)',borderColor:'#22c55e',borderWidth:1,borderRadius:6},
+            {type:'bar',label:'Total Last Month Sale',data:lastMonthSeries,backgroundColor:'rgba(168,85,247,.78)',borderColor:'#a855f7',borderWidth:1,borderRadius:6},
+            {type:'bar',label:'Projected Sales',data:forecastSeries,backgroundColor:'rgba(249,115,22,.78)',borderColor:'#f97316',borderWidth:1,borderRadius:6},
+            {type:'line',label:'Target Achieved %',data:achievedSeries,yAxisID:'yPercent',borderColor:'#f472b6',backgroundColor:'#f472b6',pointRadius:5,pointHoverRadius:7,tension:0,spanGaps:false}
+        ]},
+        options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:'bottom',labels:{color:textColor,usePointStyle:true,boxWidth:9,padding:16}},tooltip:{callbacks:{label:function(ctx){const v=Number(ctx.parsed.y)||0;return ctx.dataset.yAxisID==='yPercent'?`${ctx.dataset.label}: ${v.toFixed(1)}%`:`${ctx.dataset.label}: ${projectionMoney(v)}`;}}}},
+            scales:{x:{ticks:{color:textColor},grid:{display:false}},y:{beginAtZero:true,ticks:{color:textColor,callback:v=>projectionMoney(v)},grid:{color:gridColor}},yPercent:{position:'right',beginAtZero:true,suggestedMax:100,grid:{drawOnChartArea:false},ticks:{color:'#f472b6',callback:v=>`${v}%`}}}}
+    });
+}
+
 function renderProjectionPage(){
     projectionLoadState();
     const bookers=projectionUnique('bookingMan');
@@ -7909,6 +7964,7 @@ function renderProjectionPage(){
         if(document.activeElement!==unitTargetInput)unitTargetInput.value=assignmentProduct?(projectionState.productUnitTargets?.[assignmentProduct]||''):'';
     }
     if(unitTargetLabel)unitTargetLabel.textContent=assignmentProduct?`(for: ${assignmentProduct})`:'';
+    renderProjectionPerformanceChart({target:projTarget,today:todaySale,toDate,lastMonth:projectionNumber(projectionState.lastMonthSale),forecast:projForecast});
 }
 function projectionSaveTableField(input){projectionState[input.dataset.projectionField]=Math.max(0,projectionNumber(input.value));projectionSaveState();renderProjectionPage()}
 function projectionSaveTotalTargetFromAssignment(input){projectionState.totalTarget=Math.max(0,projectionNumber(input.value));projectionSaveState();renderProjectionPage()}
@@ -7922,11 +7978,40 @@ function projectionSaveProductUnitTarget(input){
     showToast(`Unit target saved for ${product}.`,'success');
 }
 function projectionTargetColumnKey(value){return String(value||'').trim().toLowerCase().replace(/[^a-z0-9]/g,'')}
+function projectionProductTargetMeta(){
+    const meta=new Map();
+    (rawData||[]).forEach(row=>{
+        const name=String(row.itemName||'').trim();
+        if(!name)return;
+        const date=String(row.invoiceDate||'').slice(0,10);
+        const rate=Math.max(0,projectionNumber(row.rate));
+        const group=String(row.companyGroup||'').trim()||String(row.companyName||'').trim()||'';
+        const prior=meta.get(name);
+        if(!prior||date>=prior.date){
+            meta.set(name,{group:group||prior?.group||'',tp:rate>0?rate:(prior?.tp||0),date});
+        }else if(!prior.tp&&rate>0){prior.tp=rate;}
+    });
+    return meta;
+}
 function downloadProjectionTargetSample(){
-    const products=projectionUnique('itemName');
-    const rows=products.length?products.map((name,index)=>({'Sr. No':index+1,'Product Name':name,'Unit TGT':''})):[{'Sr. No':1,'Product Name':'','Unit TGT':''}];
     if(typeof XLSX==='undefined'){showToast('Excel support is unavailable.','error');return}
-    const workbook=XLSX.utils.book_new(),sheet=XLSX.utils.json_to_sheet(rows,{header:['Sr. No','Product Name','Unit TGT']});
+    const meta=projectionProductTargetMeta();
+    const products=[...meta.keys()].sort((a,b)=>a.localeCompare(b));
+    const rows=products.length?products.map((name,index)=>{
+        const item=meta.get(name),tp=projectionNumber(projectionState.productTPs?.[name])||item.tp||0;
+        const units=projectionNumber(projectionState.productUnitTargets?.[name]);
+        return {'Sr. No':index+1,'Product Name':name,'Product Group':item.group,'TP':tp,'Unit TGT':units,'Value TGT':tp*units};
+    }):[{'Sr. No':1,'Product Name':'','Product Group':'','TP':'','Unit TGT':'','Value TGT':''}];
+    const workbook=XLSX.utils.book_new();
+    const sheet=XLSX.utils.json_to_sheet(rows,{header:['Sr. No','Product Name','Product Group','TP','Unit TGT','Value TGT']});
+    // Keep Value TGT live in Excel: TP x Unit TGT. Upload also recalculates it server-independently.
+    for(let i=0;i<rows.length;i++){
+        const excelRow=i+2;
+        const cellRef='F'+excelRow;
+        if(rows[i]['Product Name'])sheet[cellRef]={t:'n',f:`D${excelRow}*E${excelRow}`,v:projectionNumber(rows[i].TP)*projectionNumber(rows[i]['Unit TGT'])};
+    }
+    sheet['!cols']=[{wch:10},{wch:32},{wch:24},{wch:14},{wch:14},{wch:18}];
+    workbook.Workbook=workbook.Workbook||{};workbook.Workbook.CalcPr={fullCalcOnLoad:true,forceFullCalc:true};
     XLSX.utils.book_append_sheet(workbook,sheet,'TGT');
     XLSX.writeFile(workbook,'PharmaTracker_TGT_Sample.xlsx');
 }
@@ -7937,23 +8022,41 @@ function handleProjectionTargetFile(input){
     const reader=new FileReader();
     reader.onload=function(event){
         try{
-            const workbook=XLSX.read(event.target.result,{type:'array'}),sheet=workbook.Sheets[workbook.SheetNames[0]];
+            const workbook=XLSX.read(event.target.result,{type:'array',cellFormula:true}),sheet=workbook.Sheets[workbook.SheetNames[0]];
             const rows=XLSX.utils.sheet_to_json(sheet,{header:1,defval:''});
             const headers=(rows[0]||[]).map(projectionTargetColumnKey);
-            const expected=['srno','productname','unittgt'];
-            if(headers.length!==3||expected.some((key,index)=>headers[index]!==key))throw new Error('Use the TGT Sample File: Sr. No, Product Name, Unit TGT.');
-            const validProducts=new Set(projectionUnique('itemName'));
-            const targets={}; let imported=0,skipped=0;
-            rows.slice(1).forEach(row=>{
-                const product=String(row[1]||'').trim(),target=projectionNumber(row[2]);
+            const legacy=['srno','productname','unittgt'];
+            const current=['srno','productname','productgroup','tp','unittgt','valuetgt'];
+            const isLegacy=headers.length===3&&legacy.every((key,index)=>headers[index]===key);
+            const isCurrent=headers.length===6&&current.every((key,index)=>headers[index]===key);
+            if(!isLegacy&&!isCurrent)throw new Error('Use the TGT Sample File with columns: Sr. No, Product Name, Product Group, TP, Unit TGT, Value TGT. Older 3-column files are also supported.');
+            const productMeta=projectionProductTargetMeta(),validProducts=new Set(productMeta.keys());
+            const targets={},tps={},values={},seenProducts=new Set();let imported=0,skipped=0;
+            rows.slice(1).forEach((row,rowIndex)=>{
+                const product=String(row[1]||'').trim();
                 if(!product)return;
                 if(!validProducts.has(product)){skipped++;return}
-                targets[product]=Math.max(0,target); imported++;
+                if(seenProducts.has(product)){skipped++;return}
+                seenProducts.add(product);
+                const meta=productMeta.get(product)||{};
+                const group=isCurrent?String(row[2]||'').trim():String(meta.group||'').trim();
+                if(isCurrent&&meta.group&&!group){skipped++;return}
+                if(isCurrent&&group&&meta.group&&group.toLowerCase()!==String(meta.group).toLowerCase()){skipped++;return}
+                const tpRaw=isCurrent?row[3]:projectionState.productTPs?.[product];
+                const tp=tpRaw===''||tpRaw===undefined?projectionNumber(meta.tp):projectionNumber(tpRaw);
+                const unitRaw=isCurrent?row[4]:row[2];
+                if(unitRaw===''||unitRaw===undefined||!Number.isFinite(Number(unitRaw))||Number(unitRaw)<0){skipped++;return}
+                if(!Number.isFinite(Number(tp))||tp<=0){skipped++;return}
+                const units=Number(unitRaw),value=tp*units;
+                // If the workbook has a cached/formula value, it is intentionally recomputed from TP x Unit TGT.
+                targets[product]=units;tps[product]=tp;values[product]=value;imported++;
             });
-            if(!imported)throw new Error('No matching product targets were found in the file.');
+            if(!imported)throw new Error('No valid matching product targets were found. Check Product Name, Product Group, TP and Unit TGT.');
             projectionState.productUnitTargets={...(projectionState.productUnitTargets||{}),...targets};
-            projectionSaveState(); renderProjectionPage();
-            showToast(`${imported} unit target${imported===1?'':'s'} imported${skipped?`; ${skipped} unmatched product${skipped===1?' was':'s were'} skipped`:''}.`,'success');
+            projectionState.productTPs={...(projectionState.productTPs||{}),...tps};
+            projectionState.productValueTargets={...(projectionState.productValueTargets||{}),...values};
+            projectionSaveState();renderProjectionPage();
+            showToast(`${imported} product target${imported===1?'':'s'} imported${skipped?`; ${skipped} unmatched or invalid row${skipped===1?' was':'s were'} skipped`:''}. Value TGT calculated from TP × Unit TGT.`,'success');
         }catch(error){showToast(error.message||'Could not read the TGT file.','error')}
         input.value='';
     };
@@ -7966,6 +8069,8 @@ function projectionRemoveTargetData(){
     projectionState.productTargets={};
     projectionState.bookerPercentages={};
     projectionState.productUnitTargets={};
+    projectionState.productTPs={};
+    projectionState.productValueTargets={};
     delete projectionState.totalTarget;
     delete projectionState.lastMonthSale;
     projectionSaveState();
