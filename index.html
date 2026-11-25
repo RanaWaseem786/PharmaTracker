@@ -7904,7 +7904,44 @@ function renderProjectionPerformanceChart(values){
             {type:'line',label:'Target Achieved %',data:achievedSeries,yAxisID:'yPercent',borderColor:'#f472b6',backgroundColor:'#f472b6',pointRadius:5,pointHoverRadius:7,tension:0,spanGaps:false}
         ]},
         options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:'bottom',labels:{color:textColor,usePointStyle:true,boxWidth:9,padding:16}},tooltip:{callbacks:{label:function(ctx){const v=Number(ctx.parsed.y)||0;return ctx.dataset.yAxisID==='yPercent'?`${ctx.dataset.label}: ${v.toFixed(1)}%`:`${ctx.dataset.label}: ${projectionMoney(v)}`;}}}},
-            scales:{x:{ticks:{color:textColor},grid:{display:false}},y:{beginAtZero:true,ticks:{color:textColor,callback:v=>projectionMoney(v)},grid:{color:gridColor}},yPercent:{position:'right',beginAtZero:true,suggestedMax:100,grid:{drawOnChartArea:false},ticks:{color:'#f472b6',callback:v=>`${v}%`}}}}
+            scales:{x:{ticks:{color:textColor},grid:{display:false}},y:{beginAtZero:true,ticks:{color:textColor,callback:v=>projectionMoney(v)},grid:{color:gridColor}},yPercent:{position:'right',beginAtZero:true,suggestedMax:100,grid:{drawOnChartArea:false},ticks:{color:'#f472b6',callback:v=>`${v}%`}}}},
+        plugins:[{
+            id:'projectionBarValueLabels',
+            afterDatasetsDraw(chart){
+                const ctx=chart.ctx;
+                const area=chart.chartArea;
+                ctx.save();
+                ctx.font='600 10px Inter, Arial, sans-serif';
+                ctx.textAlign='center';
+                ctx.textBaseline='bottom';
+                chart.data.datasets.forEach((dataset,datasetIndex)=>{
+                    if(dataset.type==='line') return;
+                    const meta=chart.getDatasetMeta(datasetIndex);
+                    if(meta.hidden) return;
+                    meta.data.forEach((bar,index)=>{
+                        const raw=dataset.data[index];
+                        if(raw===null||raw===undefined||!Number.isFinite(Number(raw))||Number(raw)===0) return;
+                        const pos=bar.getProps(['x','y'],true);
+                        let label=projectionMoney(Number(raw));
+                        const maxWidth=Math.max(42,bar.width*1.8);
+                        ctx.font='600 9px Inter, Arial, sans-serif';
+                        while(ctx.measureText(label).width>maxWidth && ctx.font.match(/(\d+)px/)[1]>7){
+                            const size=Number(ctx.font.match(/(\d+)px/)[1])-1;
+                            ctx.font=`600 ${size}px Inter, Arial, sans-serif`;
+                        }
+                        let y=pos.y-5;
+                        if(y<area.top+9){y=Math.min(area.bottom-3,pos.y+14);ctx.textBaseline='top';}
+                        ctx.lineWidth=3;
+                        ctx.strokeStyle='rgba(10,12,18,.92)';
+                        ctx.strokeText(label,pos.x,y);
+                        ctx.fillStyle='#f8fafc';
+                        ctx.fillText(label,pos.x,y);
+                        ctx.textBaseline='bottom';
+                    });
+                });
+                ctx.restore();
+            }
+        }]
     });
 }
 
