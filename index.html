@@ -15632,9 +15632,27 @@ function prepareDataSummary(catalogue, data) {
             throw err;
         }
 
-        const snap = await serverGet(chunksColFor(targetEmail), CLOUD_TIMEOUT * 3, 'Cloud dataset chunks read');
-        const parts = new Array(count).fill(null);
         const targetSnapId = meta.snapshotId ? String(meta.snapshotId) : '';
+        let snap;
+
+        // Fast path: fetch only the active snapshot's chunks instead of every
+        // historical chunk in this user's collection. Older/legacy snapshots
+        // may not have a snapshotId field, so retain the original full-scan
+        // fallback whenever the indexed result cannot satisfy the manifest.
+        if (targetSnapId) {
+            snap = await serverGet(
+                chunksColFor(targetEmail).where('snapshotId', '==', targetSnapId),
+                CLOUD_TIMEOUT * 3,
+                'Active cloud dataset chunks read'
+            );
+            if (!snap || !snap.docs || snap.docs.length < count) {
+                snap = await serverGet(chunksColFor(targetEmail), CLOUD_TIMEOUT * 3, 'Cloud dataset chunks read');
+            }
+        } else {
+            snap = await serverGet(chunksColFor(targetEmail), CLOUD_TIMEOUT * 3, 'Cloud dataset chunks read');
+        }
+
+        const parts = new Array(count).fill(null);
         const targetPrefix = targetSnapId ? (targetSnapId + '_') : '';
 
         snap.docs.forEach(function (d) {
